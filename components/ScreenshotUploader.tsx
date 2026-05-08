@@ -15,9 +15,66 @@ interface ScreenshotUploaderProps {
   onParsed: (legs: ParsedLeg[]) => void;
 }
 
+const ACCEPTED_TYPES = [
+  "image/png", "image/jpeg", "image/jpg", "image/webp", "image/bmp",
+  "image/heic", "image/heif",
+];
+const MAX_SIZE_MB = 10;
+
+function isHeic(file: File): boolean {
+  const t = file.type.toLowerCase();
+  return t === "image/heic" || t === "image/heif" || /\.heic$/i.test(file.name);
+}
+
+async function convertHeic(file: File): Promise<Blob> {
+  const heic2any = (await import("heic2any")).default;
+  const result = await heic2any({ blob: file, toType: "image/png", quality: 1 });
+  return Array.isArray(result) ? result[0] : result;
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Could not read blob"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function fileToImageDataUrl(file: File): Promise<string> {
+  let blob: Blob = file;
+
+  if (isHeic(file)) {
+    console.log("[OCR] Converting HEIC to PNG...");
+    blob = await convertHeic(file);
+  }
+
+  const dataUrl = await blobToDataUrl(blob);
+
+  // Draw through canvas to normalize to PNG
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Could not create canvas context"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => reject(new Error("Browser could not decode image. Try PNG or JPG."));
+    img.src = dataUrl;
+  });
+}
+
 export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ocrDebug, setOcrDebug] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -25,19 +82,48 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
     async (file: File) => {
       setProcessing(true);
       setError(null);
+      setOcrDebug(null);
 
-      // Show preview
-      const reader = new FileReader();
-      reader.onload = (e) => setPreview(e.target?.result as string);
-      reader.readAsDataURL(file);
+      // Validate file type
+      if (!ACCEPTED_TYPES.includes(file.type.toLowerCase()) && !isHeic(file)) {
+        setError(
+          `Unsupported format: ${file.type || "unknown"}. Use PNG, JPG, WebP, or HEIC.`
+        );
+        setProcessing(false);
+        return;
+      }
+
+      // Validate file size
+      if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+        setError(`File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Max ${MAX_SIZE_MB}MB.`);
+        setProcessing(false);
+        return;
+      }
+
+      // Convert to canvas PNG for reliable Tesseract input
+      let imageDataUrl: string;
+      try {
+        imageDataUrl = await fileToImageDataUrl(file);
+        setPreview(imageDataUrl);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        setError(`Image load failed: ${msg}`);
+        setProcessing(false);
+        console.error("[OCR] Image conversion error:", err);
+        return;
+      }
 
       try {
         const { createWorker } = await import("tesseract.js");
         const worker = await createWorker("eng");
         const {
-          data: { text },
-        } = await worker.recognize(file);
+          data: { text, confidence },
+        } = await worker.recognize(imageDataUrl);
         await worker.terminate();
+
+        console.log("[OCR] Raw text:", text);
+        console.log("[OCR] Confidence:", confidence);
+        setOcrDebug(`OCR confidence: ${Math.round(confidence)}% | ${text.split("\n").filter(Boolean).length} lines detected`);
 
         const legs = parseOCRText(text);
 
@@ -45,11 +131,15 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
           setError(
             "Could not parse bet details from screenshot. Try manual entry."
           );
+          console.warn("[OCR] No legs parsed from text:", text);
         } else {
+          console.log("[OCR] Parsed legs:", legs);
           onParsed(legs);
         }
       } catch (err) {
-        setError(`OCR failed: ${err instanceof Error ? err.message : "Unknown error"}. Try manual entry.`);
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`OCR failed: ${msg}. Try manual entry.`);
+        console.error("[OCR] Tesseract error:", err);
       } finally {
         setProcessing(false);
       }
@@ -61,7 +151,7 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
     (e: React.DragEvent) => {
       e.preventDefault();
       const file = e.dataTransfer.files[0];
-      if (file?.type.startsWith("image/")) processImage(file);
+      if (file) processImage(file);
     },
     [processImage]
   );
@@ -95,14 +185,14 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
               Drop your parlay screenshot here
             </p>
             <p className="text-sm text-muted-foreground">
-              or click to browse
+              PNG, JPG, WebP, or HEIC — max {MAX_SIZE_MB}MB
             </p>
           </div>
         )}
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept={ACCEPTED_TYPES.join(",")}
           onChange={handleFileChange}
           className="hidden"
         />
@@ -114,9 +204,18 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
         </div>
       )}
 
+      {ocrDebug && !error && (
+        <div className="text-center text-xs text-muted-foreground bg-muted p-2 rounded font-mono">
+          {ocrDebug}
+        </div>
+      )}
+
       {error && (
-        <div className="text-center text-sm text-red-600 bg-red-50 p-3 rounded">
-          {error}
+        <div className="text-sm text-red-600 bg-red-50 p-3 rounded space-y-1">
+          <p>{error}</p>
+          {ocrDebug && (
+            <p className="text-xs text-red-400 font-mono">{ocrDebug}</p>
+          )}
         </div>
       )}
 
@@ -127,6 +226,8 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
           onClick={() => {
             setPreview(null);
             setError(null);
+            setOcrDebug(null);
+            if (fileRef.current) fileRef.current.value = "";
           }}
         >
           Clear & Try Again
@@ -138,16 +239,11 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
 
 /**
  * Parse OCR text to extract bet legs.
- * This uses heuristics for common sportsbook formats.
+ * Uses heuristics for common sportsbook formats.
  */
 function parseOCRText(text: string): ParsedLeg[] {
   const legs: ParsedLeg[] = [];
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-
-  // Common patterns:
-  // "Lakers -3.5 (-110)"
-  // "LAL vs BOS Spread -3.5 -110"
-  // "Over 220.5 (-110)"
 
   const spreadRegex =
     /([A-Za-z\s.]+?)\s+([+-]?\d+\.?\d*)\s+\(?\s*([+-]\d+)\s*\)?/;
@@ -157,7 +253,6 @@ function parseOCRText(text: string): ParsedLeg[] {
     /(?:Over|Under|O|U)\s+(\d+\.?\d*)\s+\(?\s*([+-]\d+)\s*\)?/i;
 
   for (const line of lines) {
-    // Try Over/Under
     const ouMatch = line.match(ouRegex);
     if (ouMatch) {
       const isOver = /over|^o\s/i.test(line);
@@ -171,7 +266,6 @@ function parseOCRText(text: string): ParsedLeg[] {
       continue;
     }
 
-    // Try Moneyline
     const mlMatch = line.match(mlRegex);
     if (mlMatch) {
       legs.push({
@@ -184,7 +278,6 @@ function parseOCRText(text: string): ParsedLeg[] {
       continue;
     }
 
-    // Try Spread
     const spreadMatch = line.match(spreadRegex);
     if (spreadMatch) {
       legs.push({
