@@ -18,18 +18,15 @@ function toESPNDate(date: Date): string {
   return `${y}${m}${d}`;
 }
 
-// Get candidate dates to search: creation date in local time, and day before
 function getCandidateDates(isoDate: string): string[] {
   const d = new Date(isoDate);
   const dayBefore = new Date(d);
   dayBefore.setDate(dayBefore.getDate() - 1);
 
-  // Local date and UTC date may differ — try both
   const candidates = new Set<string>();
   candidates.add(toESPNDate(d));
   candidates.add(toESPNDate(dayBefore));
 
-  // Also add based on local interpretation
   const localDate = isoDate.slice(0, 10).replace(/-/g, "");
   candidates.add(localDate);
 
@@ -40,16 +37,24 @@ function getCandidateDates(isoDate: string): string[] {
   return [...candidates];
 }
 
+const FINAL_STATUSES = new Set(["won", "lost", "push"]);
+
 export function useLiveScores(
   legs: LegWithScore[],
   enabled: boolean = true,
-  parlayCreatedAt?: string
+  parlayCreatedAt?: string,
+  parlayId?: string,
+  parlayStatus?: string
 ) {
   const [scores, setScores] = useState<GameScore[]>([]);
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat[]>>({});
   const [updatedLegs, setUpdatedLegs] = useState<LegWithScore[]>(legs);
   const scoresRef = useRef(scores);
   scoresRef.current = scores;
+  const finalizedRef = useRef(false);
+
+  // If parlay already finalized in DB, use DB statuses — no fetching needed
+  const alreadyFinalized = parlayStatus === "won" || parlayStatus === "lost";
 
   const isToday = !parlayCreatedAt ||
     new Date(parlayCreatedAt).toDateString() === new Date().toDateString();
@@ -67,7 +72,6 @@ export function useLiveScores(
   }, []);
 
   const fetchAll = useCallback(async () => {
-    // Collect all team abbrs we need to find games for
     const neededTeams = new Set<string>();
     for (const leg of legs) {
       const abbr = resolveTeamAbbr(leg.team);
@@ -77,16 +81,13 @@ export function useLiveScores(
     let allScores: GameScore[] = [];
 
     if (isToday) {
-      // Today: just fetch current scoreboard
       const res = await fetch("/api/scores").catch(() => null);
       if (res?.ok) allScores = await res.json();
     } else if (parlayCreatedAt) {
-      // Historical: try candidate dates until we find the matching games
       const dates = getCandidateDates(parlayCreatedAt);
       const foundTeams = new Set<string>();
 
       for (const date of dates) {
-        // Skip if we already found all needed teams
         const allFound = [...neededTeams].every((t) => foundTeams.has(t));
         if (allFound) break;
 
@@ -95,9 +96,7 @@ export function useLiveScores(
         const dayScores: GameScore[] = await res.json();
 
         for (const game of dayScores) {
-          // Only add games that have teams we need
           if (neededTeams.has(game.homeTeam) || neededTeams.has(game.awayTeam)) {
-            // Avoid duplicates
             if (!allScores.some((s) => s.espnEventId === game.espnEventId)) {
               allScores.push(game);
               foundTeams.add(game.homeTeam);
@@ -110,7 +109,6 @@ export function useLiveScores(
 
     setScores(allScores);
 
-    // Collect event IDs for prop legs
     const eventIds = new Set<string>();
     for (const leg of legs) {
       if (leg.espnEventId) {
@@ -133,6 +131,12 @@ export function useLiveScores(
 
   // Update leg statuses
   useEffect(() => {
+    // Already finalized in DB — just use DB statuses
+    if (alreadyFinalized) {
+      setUpdatedLegs(legs);
+      return;
+    }
+
     if (scores.length === 0) {
       setUpdatedLegs(legs);
       return;
@@ -147,7 +151,7 @@ export function useLiveScores(
       );
       if (!game) return leg;
 
-      if (leg.status === "won" || leg.status === "lost" || leg.status === "push") {
+      if (FINAL_STATUSES.has(leg.status)) {
         return { ...leg, score: game };
       }
 
@@ -189,11 +193,31 @@ export function useLiveScores(
     });
 
     setUpdatedLegs(updated);
-  }, [scores, playerStats, legs]);
+  }, [scores, playerStats, legs, alreadyFinalized]);
 
-  // Polling — historical parlays fetch once
+  // Auto-finalize: when all legs have final status, persist to DB
   useEffect(() => {
-    if (!enabled) return;
+    if (alreadyFinalized || finalizedRef.current || !parlayId) return;
+
+    const allFinal = updatedLegs.every((l) => FINAL_STATUSES.has(l.status));
+    const anyResolved = updatedLegs.some((l) => FINAL_STATUSES.has(l.status));
+    if (!allFinal || !anyResolved) return;
+
+    finalizedRef.current = true;
+
+    const legUpdates = updatedLegs.map((l) => ({ id: l.id, status: l.status }));
+    fetch(`/api/parlays/${parlayId}/finalize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ legs: legUpdates }),
+    }).catch(() => {
+      finalizedRef.current = false; // retry next cycle
+    });
+  }, [updatedLegs, parlayId, alreadyFinalized]);
+
+  // Polling — skip entirely if already finalized
+  useEffect(() => {
+    if (!enabled || alreadyFinalized) return;
 
     fetchAll();
 
@@ -204,7 +228,7 @@ export function useLiveScores(
 
     const timer = setInterval(fetchAll, interval);
     return () => clearInterval(timer);
-  }, [enabled, fetchAll, isToday]);
+  }, [enabled, fetchAll, isToday, alreadyFinalized]);
 
   return { scores, legs: updatedLegs };
 }
