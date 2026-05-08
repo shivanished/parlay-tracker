@@ -9,7 +9,6 @@ export async function GET(req: NextRequest) {
   }
 
   const ids = [...new Set(eventIds.split(",").filter(Boolean))];
-  logger.request("GET", "/api/player-stats", { eventIds: ids });
 
   try {
     const results = await Promise.all(
@@ -24,14 +23,9 @@ export async function GET(req: NextRequest) {
       playersByEvent[r.eventId] = r.players;
     }
 
-    logger.info("Player stats fetched", {
-      events: ids.length,
-      totalPlayers: Object.values(playersByEvent).flat().length,
-    });
-
     return NextResponse.json(playersByEvent);
   } catch (err) {
-    logger.error("Player stats fetch failed", { error: String(err) });
+    logger.error("Player stats fetch failed", { error: String(err), eventIds: ids });
     return NextResponse.json(
       { error: "Failed to fetch player stats" },
       { status: 502 }

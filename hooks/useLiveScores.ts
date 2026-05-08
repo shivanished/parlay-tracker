@@ -72,14 +72,22 @@ export function useLiveScores(
       return;
     }
 
+    const availableTeams = scores.flatMap((s) => [s.homeTeam, s.awayTeam]);
+
     const updated = legs.map((leg) => {
       const teamAbbr = resolveTeamAbbr(leg.team);
-      if (!teamAbbr) return leg;
+      if (!teamAbbr) {
+        console.warn(`[live] No team abbr for: "${leg.team}"`);
+        return leg;
+      }
 
       const game = scores.find(
         (s) => s.homeTeam === teamAbbr || s.awayTeam === teamAbbr
       );
-      if (!game) return leg;
+      if (!game) {
+        console.warn(`[live] No game for ${teamAbbr} (from "${leg.team}"). Available: ${availableTeams.join(", ")}`);
+        return leg;
+      }
 
       // Don't override final statuses from DB
       if (leg.status === "won" || leg.status === "lost" || leg.status === "push") {
@@ -96,6 +104,11 @@ export function useLiveScores(
               (p) => p.playerName.toLowerCase() === playerName.toLowerCase()
             )
           : undefined;
+
+        if (!stat && playerName) {
+          const available = eventPlayers.map((p) => p.playerName).join(", ");
+          console.warn(`[live] Player "${playerName}" not found in event ${eventId}. Players: ${available || "none loaded"}`);
+        }
 
         const { status: propStatus, currentValue, target, statLabel } = evaluateProp(
           leg.line,

@@ -6,13 +6,11 @@ import { fetchNBAScoreboard, findGameForTeam } from "@/lib/espn";
 import { logger } from "@/lib/logger";
 
 export async function GET() {
-  logger.request("GET", "/api/parlays");
   try {
     const parlays = await prisma.parlay.findMany({
       include: { legs: true },
       orderBy: { createdAt: "desc" },
     });
-    logger.info("Fetched parlays", { count: parlays.length });
     return NextResponse.json(parlays);
   } catch (err) {
     logger.error("Failed to fetch parlays", { error: String(err) });

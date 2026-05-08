@@ -7,7 +7,6 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  logger.request("GET", `/api/parlays/${id}`);
 
   try {
     const parlay = await prisma.parlay.findUnique({
@@ -16,7 +15,6 @@ export async function GET(
     });
 
     if (!parlay) {
-      logger.warn("Parlay not found", { id });
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -32,7 +30,6 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  logger.request("DELETE", `/api/parlays/${id}`);
 
   try {
     await prisma.parlay.delete({ where: { id } });
