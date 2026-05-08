@@ -20,6 +20,9 @@ export default function NewParlayPage() {
   const [parsedLegs, setParsedLegs] = useState<ParsedLeg[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [wager, setWager] = useState("");
+  const [gameDate, setGameDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
 
   const handleParsed = (legs: ParsedLeg[]) => {
     setParsedLegs(legs);
@@ -31,6 +34,7 @@ export default function NewParlayPage() {
 
     const payload = {
       wagerAmount: wager ? parseFloat(wager) : undefined,
+      gameDate,
       legs: legs.map((l) => ({
         team: l.player
           ? `${l.player} (${resolveTeamAbbr(l.team) || l.team})`
@@ -116,17 +120,28 @@ export default function NewParlayPage() {
 
       {mode === "confirm" && (
         <div className="space-y-4">
-          <div className="border rounded-lg p-4">
-            <Label htmlFor="wager-confirm">Wager Amount ($)</Label>
-            <Input
-              id="wager-confirm"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="Optional"
-              value={wager}
-              onChange={(e) => setWager(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="border rounded-lg p-4">
+              <Label htmlFor="game-date">Game Date</Label>
+              <Input
+                id="game-date"
+                type="date"
+                value={gameDate}
+                onChange={(e) => setGameDate(e.target.value)}
+              />
+            </div>
+            <div className="border rounded-lg p-4">
+              <Label htmlFor="wager-confirm">Wager Amount ($)</Label>
+              <Input
+                id="wager-confirm"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Optional"
+                value={wager}
+                onChange={(e) => setWager(e.target.value)}
+              />
+            </div>
           </div>
 
           <LegConfirmation

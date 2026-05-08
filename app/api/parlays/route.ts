@@ -31,9 +31,10 @@ export async function POST(req: NextRequest) {
   logger.request("POST", "/api/parlays");
   try {
     const body = await req.json();
-    const { legs, wagerAmount } = body as {
+    const { legs, wagerAmount, gameDate } = body as {
       legs: LegInput[];
       wagerAmount?: number;
+      gameDate?: string; // YYYY-MM-DD for historical parlays
     };
 
     if (!legs || legs.length === 0) {
@@ -41,10 +42,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "At least one leg required" }, { status: 400 });
     }
 
-    // Try to match each leg to an ESPN event
+    // Fetch scoreboard for the game date (or today)
+    const espnDate = gameDate ? gameDate.replace(/-/g, "") : undefined;
     let scores: Awaited<ReturnType<typeof fetchNBAScoreboard>> = [];
     try {
-      scores = await fetchNBAScoreboard();
+      scores = await fetchNBAScoreboard(espnDate);
     } catch (err) {
       logger.warn("ESPN scoreboard fetch failed during create", { error: String(err) });
     }
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
 
     const parlay = await prisma.parlay.create({
       data: {
+        createdAt: gameDate ? new Date(gameDate + "T12:00:00Z") : undefined,
         wagerAmount: wagerAmount || null,
         totalOdds,
         potentialPayout,
