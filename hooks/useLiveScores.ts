@@ -22,17 +22,6 @@ export function useLiveScores(
   const scoresRef = useRef(scores);
   scoresRef.current = scores;
 
-  const fetchScores = useCallback(async () => {
-    try {
-      const res = await fetch("/api/scores");
-      if (!res.ok) return;
-      const data: GameScore[] = await res.json();
-      setScores(data);
-    } catch {
-      // silent fail
-    }
-  }, []);
-
   const fetchPlayerStats = useCallback(async (eventIds: string[]) => {
     if (eventIds.length === 0) return;
     try {
@@ -47,18 +36,34 @@ export function useLiveScores(
 
   // Fetch scores + player stats
   const fetchAll = useCallback(async () => {
-    await fetchScores();
-
-    // Collect unique eventIds for prop legs
-    const propEventIds = legs
-      .filter((l) => l.betType === "prop" && l.espnEventId)
-      .map((l) => l.espnEventId!)
-      .filter((id, i, arr) => arr.indexOf(id) === i);
-
-    if (propEventIds.length > 0) {
-      await fetchPlayerStats(propEventIds);
+    const scoresRes = await fetch("/api/scores").catch(() => null);
+    let latestScores: GameScore[] = [];
+    if (scoresRes?.ok) {
+      latestScores = await scoresRes.json();
+      setScores(latestScores);
     }
-  }, [fetchScores, fetchPlayerStats, legs]);
+
+    // Collect event IDs for all prop legs — from espnEventId or by matching scores
+    const eventIds = new Set<string>();
+    for (const leg of legs) {
+      if (leg.betType !== "prop") continue;
+      if (leg.espnEventId) {
+        eventIds.add(leg.espnEventId);
+      } else {
+        const teamAbbr = resolveTeamAbbr(leg.team);
+        if (teamAbbr) {
+          const game = latestScores.find(
+            (s) => s.homeTeam === teamAbbr || s.awayTeam === teamAbbr
+          );
+          if (game) eventIds.add(game.espnEventId);
+        }
+      }
+    }
+
+    if (eventIds.size > 0) {
+      await fetchPlayerStats([...eventIds]);
+    }
+  }, [fetchPlayerStats, legs]);
 
   // Update leg statuses when scores/stats change
   useEffect(() => {
