@@ -2,7 +2,6 @@
 
 import { LegWithScore } from "@/lib/types";
 import { StatusBadge } from "./StatusBadge";
-import { LiveScore } from "./LiveScore";
 
 const betTypeLabels: Record<string, string> = {
   spread: "Spread",
@@ -15,23 +14,22 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
   const oddsStr =
     leg.odds > 0 ? `+${leg.odds}` : String(leg.odds);
 
-  const isProp = leg.betType === "prop";
   const hasStatProgress =
-    isProp &&
+    leg.betType === "prop" &&
     leg.currentStatValue !== undefined &&
     leg.targetStatValue !== undefined;
 
   return (
     <div
-      className={`flex items-center gap-4 p-4 border rounded-lg transition-colors ${
+      className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
         leg.status === "won"
-          ? "border-green-300 bg-green-50/50"
+          ? "bg-green-50/80"
           : leg.status === "lost"
-            ? "border-red-300 bg-red-50/50"
+            ? "bg-red-50/80"
             : leg.status === "winning"
-              ? "border-green-200"
+              ? "bg-green-50/40"
               : leg.status === "losing"
-                ? "border-red-200"
+                ? "bg-red-50/40"
                 : ""
       }`}
     >
@@ -39,18 +37,13 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
         <div className="font-semibold text-sm">
           {leg.team}
         </div>
-        {leg.opponent && (
-          <div className="text-xs text-muted-foreground">
-            vs {leg.opponent}
-          </div>
-        )}
-        <div className="text-sm text-muted-foreground mt-0.5">
+        <div className="text-sm text-muted-foreground">
           {betTypeLabels[leg.betType] || leg.betType} {leg.line}{" "}
           <span className="font-mono">({oddsStr})</span>
         </div>
 
         {hasStatProgress && (
-          <div className="mt-2">
+          <div className="mt-1.5">
             <div className="flex items-center gap-2 text-sm">
               <span className="font-mono font-bold text-lg">
                 {leg.currentStatValue}
@@ -85,12 +78,6 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
           </div>
         )}
       </div>
-
-      {leg.score && (
-        <div className="shrink-0">
-          <LiveScore score={leg.score} />
-        </div>
-      )}
 
       <div className="shrink-0">
         <StatusBadge status={leg.status} />

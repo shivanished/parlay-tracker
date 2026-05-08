@@ -1,9 +1,10 @@
 "use client";
 
-import { ParlayWithLegs } from "@/lib/types";
+import { ParlayWithLegs, LegWithScore, GameScore } from "@/lib/types";
 import { useLiveScores } from "@/hooks/useLiveScores";
 import { parlayProbability } from "@/lib/probability";
 import { LegRow } from "./LegRow";
+import { LiveScore } from "./LiveScore";
 import { ProbabilityGauge } from "./ProbabilityGauge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,41 @@ const statusColors: Record<string, string> = {
   won: "bg-green-500 text-white",
   lost: "bg-red-500 text-white",
 };
+
+interface GameGroup {
+  key: string;
+  score: GameScore | undefined;
+  label: string;
+  legs: LegWithScore[];
+}
+
+function groupLegsByGame(legs: LegWithScore[]): GameGroup[] {
+  const groups = new Map<string, GameGroup>();
+
+  for (const leg of legs) {
+    // Group by espnEventId if available, else by score's eventId, else "unmatched"
+    const eventId = leg.espnEventId || leg.score?.espnEventId || "unmatched";
+
+    if (!groups.has(eventId)) {
+      const score = leg.score;
+      const label = score
+        ? `${score.awayTeam} @ ${score.homeTeam}`
+        : "Unknown Game";
+
+      groups.set(eventId, { key: eventId, score, label, legs: [] });
+    }
+
+    const group = groups.get(eventId)!;
+    group.legs.push(leg);
+    // Update score if this leg has one and group doesn't yet
+    if (leg.score && !group.score) {
+      group.score = leg.score;
+      group.label = `${leg.score.awayTeam} @ ${leg.score.homeTeam}`;
+    }
+  }
+
+  return Array.from(groups.values());
+}
 
 export function ParlayDetail({ parlay }: { parlay: ParlayWithLegs }) {
   const router = useRouter();
@@ -35,7 +71,6 @@ export function ParlayDetail({ parlay }: { parlay: ParlayWithLegs }) {
     router.refresh();
   };
 
-  // Determine overall parlay status from legs
   const allResolved = legs.every(
     (l) => l.status === "won" || l.status === "lost" || l.status === "push"
   );
@@ -45,6 +80,8 @@ export function ParlayDetail({ parlay }: { parlay: ParlayWithLegs }) {
       ? "lost"
       : "won"
     : parlay.status;
+
+  const gameGroups = groupLegsByGame(legs);
 
   return (
     <div className="space-y-6">
@@ -90,10 +127,24 @@ export function ParlayDetail({ parlay }: { parlay: ParlayWithLegs }) {
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         <h2 className="font-semibold">Legs</h2>
-        {legs.map((leg) => (
-          <LegRow key={leg.id} leg={leg} />
+        {gameGroups.map((group) => (
+          <div key={group.key} className="border rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b">
+              <span className="font-semibold text-sm">{group.label}</span>
+              {group.score && (
+                <LiveScore score={group.score} />
+              )}
+            </div>
+            <div className="divide-y">
+              {group.legs.map((leg) => (
+                <div key={leg.id} className="px-2 py-1">
+                  <LegRow leg={leg} />
+                </div>
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 
