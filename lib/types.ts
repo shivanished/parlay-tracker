@@ -30,6 +30,18 @@ export interface LegWithScore {
   score?: GameScore;
 }
 
+export interface ParsedLeg {
+  player: string;
+  team: string;
+  opponent: string;
+  betType: string;
+  line: string;
+  stat: string | null;
+  odds: number;
+  confidence: number;
+  gameDate: string | null;
+}
+
 export interface ParlayWithLegs {
   id: string;
   createdAt: string;

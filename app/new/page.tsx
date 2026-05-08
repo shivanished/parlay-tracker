@@ -1,15 +1,57 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ManualEntryForm } from "@/components/ManualEntryForm";
 import { ScreenshotUploader } from "@/components/ScreenshotUploader";
+import { LegConfirmation } from "@/components/LegConfirmation";
+import { ParsedLeg } from "@/lib/types";
 
-type Mode = "choose" | "manual" | "screenshot";
+type Mode = "choose" | "manual" | "screenshot" | "confirm";
 
 export default function NewParlayPage() {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>("choose");
+  const [parsedLegs, setParsedLegs] = useState<ParsedLeg[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [wager, setWager] = useState("");
+
+  const handleParsed = (legs: ParsedLeg[]) => {
+    setParsedLegs(legs);
+    setMode("confirm");
+  };
+
+  const handleConfirm = async (legs: ParsedLeg[]) => {
+    setSubmitting(true);
+
+    const payload = {
+      wagerAmount: wager ? parseFloat(wager) : undefined,
+      legs: legs.map((l) => ({
+        team: l.player ? `${l.player} (${l.team})` : l.team,
+        opponent: l.opponent,
+        betType: l.betType === "player_prop" ? "prop" : l.betType,
+        line: l.line,
+        odds: l.odds || -110,
+      })),
+    };
+
+    const res = await fetch("/api/parlays", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      const parlay = await res.json();
+      router.push(`/parlay/${parlay.id}`);
+    } else {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <main className="max-w-2xl mx-auto p-6">
@@ -31,7 +73,7 @@ export default function NewParlayPage() {
             <div className="text-4xl mb-2">📸</div>
             <div className="font-semibold">Upload Screenshot</div>
             <div className="text-sm text-muted-foreground mt-1">
-              OCR extracts bet details
+              AI extracts bet details
             </div>
           </button>
           <button
@@ -56,16 +98,9 @@ export default function NewParlayPage() {
           >
             &larr; Back to options
           </Button>
-          <ScreenshotUploader
-            onParsed={(legs) => {
-              // For now, log parsed legs — will connect to editor
-              console.log("Parsed legs:", legs);
-              // Switch to manual mode with pre-filled data
-              setMode("manual");
-            }}
-          />
+          <ScreenshotUploader onParsed={handleParsed} />
           <div className="text-center text-sm text-muted-foreground">
-            OCR not working well?{" "}
+            Not working?{" "}
             <button
               onClick={() => setMode("manual")}
               className="underline"
@@ -73,6 +108,35 @@ export default function NewParlayPage() {
               Enter manually
             </button>
           </div>
+        </div>
+      )}
+
+      {mode === "confirm" && (
+        <div className="space-y-4">
+          <div className="border rounded-lg p-4">
+            <Label htmlFor="wager-confirm">Wager Amount ($)</Label>
+            <Input
+              id="wager-confirm"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Optional"
+              value={wager}
+              onChange={(e) => setWager(e.target.value)}
+            />
+          </div>
+
+          <LegConfirmation
+            legs={parsedLegs}
+            onConfirm={handleConfirm}
+            onBack={() => setMode("screenshot")}
+          />
+
+          {submitting && (
+            <div className="text-center text-sm text-muted-foreground animate-pulse">
+              Creating parlay...
+            </div>
+          )}
         </div>
       )}
 
