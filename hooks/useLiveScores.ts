@@ -53,8 +53,10 @@ export function useLiveScores(
   scoresRef.current = scores;
   const finalizedRef = useRef(false);
 
-  // If parlay already finalized in DB, use DB statuses — no fetching needed
-  const alreadyFinalized = parlayStatus === "won" || parlayStatus === "lost";
+  // Fully finalized = DB has status AND rich data saved
+  const hasRichData = legs.some((l) => l.gameHomeTeam != null);
+  const fullyFinalized =
+    (parlayStatus === "won" || parlayStatus === "lost") && hasRichData;
 
   const isToday = !parlayCreatedAt ||
     new Date(parlayCreatedAt).toDateString() === new Date().toDateString();
@@ -109,6 +111,7 @@ export function useLiveScores(
 
     setScores(allScores);
 
+    // Collect event IDs for prop legs — always fetch box scores
     const eventIds = new Set<string>();
     for (const leg of legs) {
       if (leg.espnEventId) {
@@ -131,8 +134,8 @@ export function useLiveScores(
 
   // Update leg statuses
   useEffect(() => {
-    // Already finalized in DB — reconstruct display data from saved fields
-    if (alreadyFinalized) {
+    // Fully finalized with rich data in DB — restore from DB, no fetching
+    if (fullyFinalized) {
       const restored = legs.map((leg) => {
         const hasGameData = leg.gameHomeTeam && leg.gameAwayTeam;
         const restoredScore: GameScore | undefined = hasGameData
@@ -161,6 +164,7 @@ export function useLiveScores(
       return;
     }
 
+    // Not finalized or missing rich data — evaluate from ESPN
     if (scores.length === 0) {
       setUpdatedLegs(legs);
       return;
@@ -174,10 +178,6 @@ export function useLiveScores(
         (s) => s.homeTeam === teamAbbr || s.awayTeam === teamAbbr
       );
       if (!game) return leg;
-
-      if (FINAL_STATUSES.has(leg.status)) {
-        return { ...leg, score: game };
-      }
 
       if (leg.betType === "prop") {
         const playerName = extractPlayerName(leg.team);
@@ -217,11 +217,11 @@ export function useLiveScores(
     });
 
     setUpdatedLegs(updated);
-  }, [scores, playerStats, legs, alreadyFinalized]);
+  }, [scores, playerStats, legs, fullyFinalized]);
 
-  // Auto-finalize: when all legs have final status, persist to DB
+  // Auto-finalize: when all legs resolved, persist to DB
   useEffect(() => {
-    if (alreadyFinalized || finalizedRef.current || !parlayId) return;
+    if (fullyFinalized || finalizedRef.current || !parlayId) return;
 
     const allFinal = updatedLegs.every((l) => FINAL_STATUSES.has(l.status));
     const anyResolved = updatedLegs.some((l) => FINAL_STATUSES.has(l.status));
@@ -249,14 +249,15 @@ export function useLiveScores(
     }).catch(() => {
       finalizedRef.current = false;
     });
-  }, [updatedLegs, parlayId, alreadyFinalized]);
+  }, [updatedLegs, parlayId, fullyFinalized]);
 
-  // Polling — skip entirely if already finalized
+  // Polling
   useEffect(() => {
-    if (!enabled || alreadyFinalized) return;
+    if (!enabled || fullyFinalized) return;
 
     fetchAll();
 
+    // Historical with no live games — fetch once, finalize will handle persisting
     if (!isToday) return;
 
     const hasLiveGames = scoresRef.current.some((s) => s.isLive);
@@ -264,7 +265,7 @@ export function useLiveScores(
 
     const timer = setInterval(fetchAll, interval);
     return () => clearInterval(timer);
-  }, [enabled, fetchAll, isToday, alreadyFinalized]);
+  }, [enabled, fetchAll, isToday, fullyFinalized]);
 
   return { scores, legs: updatedLegs };
 }

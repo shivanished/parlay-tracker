@@ -42,7 +42,7 @@ export default async function ParlayPage({
   };
 
   return (
-    <main className="max-w-2xl mx-auto p-6">
+    <main className="p-6">
       <div className="mb-4">
         <Link href="/">
           <Button variant="ghost" size="sm">

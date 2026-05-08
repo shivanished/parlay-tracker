@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { logger } from "@/lib/logger";
 import { fetchNBAScoreboard, fetchBoxScore } from "@/lib/espn";
-import { fetchPlayerPropOdds, getMarketKey, findPlayerOdds } from "@/lib/odds-api";
+import {
+  fetchGameOddsFromESPN,
+  findGameOddsForTeam,
+  extractOddsForBet,
+  lookupOdds,
+  getPropType,
+} from "@/lib/odds-api";
+import { resolveTeamAbbr } from "@/lib/team-matcher";
 import { parseStatFromLine } from "@/lib/bet-evaluator";
 
 function getOpenAI() {
@@ -188,51 +195,60 @@ async function enrichWithESPNRosters(legs: ParsedLeg[]): Promise<ParsedLeg[]> {
 async function enrichWithRealOdds(legs: ParsedLeg[]): Promise<ParsedLeg[]> {
   // Only enrich legs with missing/default odds
   const needsOdds = legs.filter(
-    (l) => l.betType === "player_prop" && l.player && (l.odds === 0 || l.odds === -110)
+    (l) => l.odds === 0 || l.odds === -110
   );
   if (needsOdds.length === 0) return legs;
 
-  // Collect unique stat markets needed
-  const marketsNeeded = new Set<string>();
-  for (const leg of needsOdds) {
-    const { statKey } = parseStatFromLine(leg.line);
-    if (statKey) {
-      const market = getMarketKey(statKey);
-      if (market) marketsNeeded.add(market);
-    }
-  }
+  // Pre-fetch ESPN game odds for game-level bets
+  const hasGameBets = needsOdds.some(
+    (l) => l.betType === "spread" || l.betType === "moneyline" || l.betType === "over_under"
+  );
+  const espnOddsMap = hasGameBets ? await fetchGameOddsFromESPN() : new Map();
 
-  if (marketsNeeded.size === 0) return legs;
+  // Enrich each leg
+  return Promise.all(
+    legs.map(async (leg) => {
+      if (leg.odds !== 0 && leg.odds !== -110) return leg;
 
-  // Fetch odds for each market
-  const oddsCache = new Map<string, Awaited<ReturnType<typeof fetchPlayerPropOdds>>>();
-  await Promise.all(
-    [...marketsNeeded].map(async (market) => {
-      const events = await fetchPlayerPropOdds(market);
-      oddsCache.set(market, events);
+      const teamAbbr = resolveTeamAbbr(leg.team);
+
+      // Game-level bets: use ESPN scoreboard odds
+      if (leg.betType === "spread" || leg.betType === "moneyline" || leg.betType === "over_under") {
+        if (!teamAbbr) return leg;
+
+        const gameOdds = findGameOddsForTeam(espnOddsMap, teamAbbr);
+        if (gameOdds) {
+          const realOdds = extractOddsForBet(gameOdds, teamAbbr, leg.betType, leg.line);
+          if (realOdds !== null) {
+            logger.info("Found ESPN odds", { team: leg.team, betType: leg.betType, odds: realOdds });
+            return { ...leg, odds: realOdds };
+          }
+        }
+        return leg;
+      }
+
+      // Player props: use BALLDONTLIE
+      if (leg.betType === "player_prop" && leg.player) {
+        const { statKey } = parseStatFromLine(leg.line);
+        const realOdds = await lookupOdds({
+          betType: "prop",
+          team: teamAbbr || "",
+          opponent: leg.opponent,
+          line: leg.line,
+          player: leg.player,
+          stat: statKey || undefined,
+          gameDate: leg.gameDate || undefined,
+        });
+
+        if (realOdds !== null) {
+          logger.info("Found BALLDONTLIE odds", { player: leg.player, line: leg.line, odds: realOdds });
+          return { ...leg, odds: realOdds };
+        }
+      }
+
+      return leg;
     })
   );
-
-  return legs.map((leg) => {
-    if (leg.betType !== "player_prop" || !leg.player) return leg;
-    if (leg.odds !== 0 && leg.odds !== -110) return leg; // already has real odds from screenshot
-
-    const { target, statKey } = parseStatFromLine(leg.line);
-    if (!statKey) return leg;
-
-    const market = getMarketKey(statKey);
-    if (!market) return leg;
-
-    const events = oddsCache.get(market) || [];
-    const realOdds = findPlayerOdds(events, leg.player, target);
-
-    if (realOdds !== null) {
-      logger.info("Found real odds", { player: leg.player, line: leg.line, odds: realOdds });
-      return { ...leg, odds: realOdds };
-    }
-
-    return leg;
-  });
 }
 
 export async function POST(req: NextRequest) {

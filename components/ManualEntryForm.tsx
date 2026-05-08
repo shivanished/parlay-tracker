@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,11 +34,69 @@ export function ManualEntryForm() {
   const [legs, setLegs] = useState<LegInput[]>([emptyLeg()]);
   const [wager, setWager] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [fetchingOdds, setFetchingOdds] = useState<Set<number>>(new Set());
+  const manualOdds = useRef<Set<number>>(new Set());
+  const debounceTimers = useRef<Map<number, NodeJS.Timeout>>(new Map());
+
+  const fetchOddsForLeg = useCallback(async (index: number, leg: LegInput) => {
+    if (manualOdds.current.has(index)) return;
+    if (!leg.team || !leg.betType) return;
+    if (leg.betType !== "moneyline" && !leg.line) return;
+
+    setFetchingOdds((prev) => new Set(prev).add(index));
+    try {
+      const res = await fetch("/api/odds/lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          team: leg.team,
+          opponent: leg.opponent,
+          betType: leg.betType,
+          line: leg.line,
+        }),
+      });
+      const data = await res.json();
+      if (data.odds != null && !manualOdds.current.has(index)) {
+        setLegs((prev) => {
+          const next = [...prev];
+          if (next[index]) {
+            next[index] = { ...next[index], odds: String(data.odds) };
+          }
+          return next;
+        });
+      }
+    } catch {
+      // silently fail — user can still enter manually
+    } finally {
+      setFetchingOdds((prev) => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+    }
+  }, []);
 
   const updateLeg = (index: number, field: keyof LegInput, value: string) => {
+    // Track manual odds entry
+    if (field === "odds" && value) {
+      manualOdds.current.add(index);
+    }
+
     setLegs((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: value };
+
+      // Debounce auto-fetch when relevant fields change
+      if (field !== "odds" && !manualOdds.current.has(index)) {
+        const updated = next[index];
+        const timer = debounceTimers.current.get(index);
+        if (timer) clearTimeout(timer);
+        debounceTimers.current.set(
+          index,
+          setTimeout(() => fetchOddsForLeg(index, updated), 500)
+        );
+      }
+
       return next;
     });
   };
@@ -47,6 +105,10 @@ export function ManualEntryForm() {
 
   const removeLeg = (index: number) => {
     if (legs.length <= 1) return;
+    const timer = debounceTimers.current.get(index);
+    if (timer) clearTimeout(timer);
+    debounceTimers.current.delete(index);
+    manualOdds.current.delete(index);
     setLegs((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -159,7 +221,14 @@ export function ManualEntryForm() {
               />
             </div>
             <div>
-              <Label htmlFor={`odds-${i}`}>Odds</Label>
+              <Label htmlFor={`odds-${i}`}>
+                Odds
+                {fetchingOdds.has(i) && (
+                  <span className="ml-1 text-xs text-muted-foreground animate-pulse">
+                    fetching...
+                  </span>
+                )}
+              </Label>
               <Input
                 id={`odds-${i}`}
                 placeholder="-110"
