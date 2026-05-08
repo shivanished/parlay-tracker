@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Parlay {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  status          String   @default("active")
+  wagerAmount     Float?
+  totalOdds       Float?
+  potentialPayout Float?
+  screenshotUrl   String?
+  legs            Leg[]
+}
+
+model Leg {
+  id          String  @id @default(cuid())
+  parlayId    String
+  parlay      Parlay  @relation(fields: [parlayId], references: [id], onDelete: Cascade)
+  team        String
+  opponent    String
+  league      String  @default("NBA")
+  betType     String
+  line        String
+  odds        Int
+  status      String  @default("pending")
+  espnEventId String?
+}
