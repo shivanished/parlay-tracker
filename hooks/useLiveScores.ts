@@ -1,17 +1,26 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { GameScore, LegWithScore } from "@/lib/types";
-import { evaluateLeg } from "@/lib/bet-evaluator";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { GameScore, LegWithScore, PlayerStat } from "@/lib/types";
+import { evaluateLeg, evaluateProp } from "@/lib/bet-evaluator";
 import { resolveTeamAbbr } from "@/lib/team-matcher";
 import { BetType } from "@/lib/types";
+
+function extractPlayerName(team: string): string | null {
+  // Format: "Cade Cunningham (Detroit Pistons)" → "Cade Cunningham"
+  const match = team.match(/^(.+?)\s*\(/);
+  return match ? match[1].trim() : null;
+}
 
 export function useLiveScores(
   legs: LegWithScore[],
   enabled: boolean = true
 ) {
   const [scores, setScores] = useState<GameScore[]>([]);
+  const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat[]>>({});
   const [updatedLegs, setUpdatedLegs] = useState<LegWithScore[]>(legs);
+  const scoresRef = useRef(scores);
+  scoresRef.current = scores;
 
   const fetchScores = useCallback(async () => {
     try {
@@ -20,11 +29,38 @@ export function useLiveScores(
       const data: GameScore[] = await res.json();
       setScores(data);
     } catch {
-      // silent fail on network errors
+      // silent fail
     }
   }, []);
 
-  // Update leg statuses when scores change
+  const fetchPlayerStats = useCallback(async (eventIds: string[]) => {
+    if (eventIds.length === 0) return;
+    try {
+      const res = await fetch(`/api/player-stats?eventIds=${eventIds.join(",")}`);
+      if (!res.ok) return;
+      const data: Record<string, PlayerStat[]> = await res.json();
+      setPlayerStats(data);
+    } catch {
+      // silent fail
+    }
+  }, []);
+
+  // Fetch scores + player stats
+  const fetchAll = useCallback(async () => {
+    await fetchScores();
+
+    // Collect unique eventIds for prop legs
+    const propEventIds = legs
+      .filter((l) => l.betType === "prop" && l.espnEventId)
+      .map((l) => l.espnEventId!)
+      .filter((id, i, arr) => arr.indexOf(id) === i);
+
+    if (propEventIds.length > 0) {
+      await fetchPlayerStats(propEventIds);
+    }
+  }, [fetchScores, fetchPlayerStats, legs]);
+
+  // Update leg statuses when scores/stats change
   useEffect(() => {
     if (scores.length === 0) {
       setUpdatedLegs(legs);
@@ -45,6 +81,34 @@ export function useLiveScores(
         return { ...leg, score: game };
       }
 
+      // For props, find player stat
+      if (leg.betType === "prop") {
+        const playerName = extractPlayerName(leg.team);
+        const eventId = leg.espnEventId || game.espnEventId;
+        const eventPlayers = playerStats[eventId] || [];
+        const stat = playerName
+          ? eventPlayers.find(
+              (p) => p.playerName.toLowerCase() === playerName.toLowerCase()
+            )
+          : undefined;
+
+        const { status: propStatus, currentValue, target, statLabel } = evaluateProp(
+          leg.line,
+          stat,
+          game.isComplete
+        );
+
+        return {
+          ...leg,
+          score: game,
+          status: stat ? propStatus : (game.isComplete ? "lost" : "pending"),
+          playerStat: stat,
+          currentStatValue: currentValue,
+          targetStatValue: target,
+          statLabel,
+        };
+      }
+
       const newStatus = evaluateLeg(
         leg.betType as BetType,
         leg.line,
@@ -56,20 +120,20 @@ export function useLiveScores(
     });
 
     setUpdatedLegs(updated);
-  }, [scores, legs]);
+  }, [scores, playerStats, legs]);
 
   // Polling
   useEffect(() => {
     if (!enabled) return;
 
-    fetchScores();
+    fetchAll();
 
-    const hasLiveGames = scores.some((s) => s.isLive);
+    const hasLiveGames = scoresRef.current.some((s) => s.isLive);
     const interval = hasLiveGames ? 30000 : 120000;
 
-    const timer = setInterval(fetchScores, interval);
+    const timer = setInterval(fetchAll, interval);
     return () => clearInterval(timer);
-  }, [enabled, fetchScores, scores.some?.length]);
+  }, [enabled, fetchAll]);
 
   return { scores, legs: updatedLegs };
 }

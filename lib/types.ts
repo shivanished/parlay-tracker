@@ -16,6 +16,17 @@ export interface GameScore {
   espnEventId: string;
 }
 
+export interface PlayerStat {
+  playerName: string;
+  points: number;
+  rebounds: number;
+  assists: number;
+  threes: number;
+  steals: number;
+  blocks: number;
+  turnovers: number;
+}
+
 export interface LegWithScore {
   id: string;
   parlayId: string;
@@ -28,6 +39,10 @@ export interface LegWithScore {
   status: LegStatus;
   espnEventId: string | null;
   score?: GameScore;
+  playerStat?: PlayerStat;
+  currentStatValue?: number;
+  targetStatValue?: number;
+  statLabel?: string;
 }
 
 export interface ParsedLeg {
