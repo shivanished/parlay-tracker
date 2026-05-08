@@ -70,8 +70,9 @@ export async function fetchBoxScore(
   const boxScore = data?.boxscore;
   if (!boxScore?.players) return [];
 
-  for (const team of boxScore.players) {
-    const statHeaders: string[] = team.statistics?.[0]?.labels || [];
+  for (const teamBlock of boxScore.players) {
+    const teamAbbr: string = teamBlock.team?.abbreviation || "";
+    const statHeaders: string[] = teamBlock.statistics?.[0]?.labels || [];
     const ptsIdx = statHeaders.indexOf("PTS");
     const rebIdx = statHeaders.indexOf("REB");
     const astIdx = statHeaders.indexOf("AST");
@@ -79,16 +80,16 @@ export async function fetchBoxScore(
     const blkIdx = statHeaders.indexOf("BLK");
     const toIdx = statHeaders.indexOf("TO");
     const threeIdx = statHeaders.indexOf("3PM");
-    // Some ESPN responses use "3PT" instead of "3PM"
     const threeAltIdx = threeIdx === -1 ? statHeaders.indexOf("3PT") : threeIdx;
 
-    for (const athlete of team.statistics?.[0]?.athletes || []) {
+    for (const athlete of teamBlock.statistics?.[0]?.athletes || []) {
       const stats: string[] = athlete.stats || [];
       const name = athlete.athlete?.displayName || "";
       if (!name || stats.length === 0) continue;
 
       players.push({
         playerName: name,
+        teamAbbr,
         points: parseInt(stats[ptsIdx]) || 0,
         rebounds: parseInt(stats[rebIdx]) || 0,
         assists: parseInt(stats[astIdx]) || 0,

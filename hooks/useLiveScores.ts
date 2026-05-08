@@ -194,13 +194,13 @@ export function useLiveScores(
       return;
     }
 
-    // Build a player→{eventId, game} map from all fetched box scores
-    const playerGameMap = new Map<string, { eventId: string; game: GameScore }>();
+    // Build a player→{eventId, game, teamAbbr} map from all fetched box scores
+    const playerGameMap = new Map<string, { eventId: string; game: GameScore; teamAbbr: string }>();
     for (const [eventId, players] of Object.entries(playerStats)) {
       const game = scores.find((s) => s.espnEventId === eventId);
       if (!game) continue;
       for (const p of players) {
-        playerGameMap.set(p.playerName.toLowerCase(), { eventId, game });
+        playerGameMap.set(p.playerName.toLowerCase(), { eventId, game, teamAbbr: p.teamAbbr });
       }
     }
 
@@ -216,15 +216,23 @@ export function useLiveScores(
       let matchedEventId = leg.espnEventId || game?.espnEventId;
 
       // Fallback: find game by player name in box scores
+      let resolvedTeamAbbr = teamAbbr;
       if (!game && playerName) {
         const playerMatch = playerGameMap.get(playerName.toLowerCase());
         if (playerMatch) {
           game = playerMatch.game;
           matchedEventId = playerMatch.eventId;
+          resolvedTeamAbbr = playerMatch.teamAbbr;
         }
       }
 
       if (!game) return leg;
+
+      // Fix team display if it has empty parens
+      let displayTeam = leg.team;
+      if (playerName && leg.team.includes("()") && resolvedTeamAbbr) {
+        displayTeam = `${playerName} (${resolvedTeamAbbr})`;
+      }
 
       if (leg.betType === "prop") {
         const eventPlayers = playerStats[matchedEventId || ""] || [];
@@ -234,6 +242,11 @@ export function useLiveScores(
             )
           : undefined;
 
+        // If we still don't have teamAbbr, get it from the matched stat
+        if (displayTeam.includes("()") && stat?.teamAbbr) {
+          displayTeam = `${playerName} (${stat.teamAbbr})`;
+        }
+
         const { status: propStatus, currentValue, target, statLabel } = evaluateProp(
           leg.line,
           stat,
@@ -242,6 +255,7 @@ export function useLiveScores(
 
         return {
           ...leg,
+          team: displayTeam,
           score: game,
           status: stat ? propStatus : (game.isComplete ? "lost" : "pending"),
           playerStat: stat,
@@ -260,7 +274,7 @@ export function useLiveScores(
         game
       );
 
-      return { ...leg, score: game, status: newStatus };
+      return { ...leg, team: displayTeam, score: game, status: newStatus };
     });
 
     setUpdatedLegs(updated);

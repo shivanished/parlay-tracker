@@ -18,6 +18,7 @@ export interface GameScore {
 
 export interface PlayerStat {
   playerName: string;
+  teamAbbr: string;
   points: number;
   rebounds: number;
   assists: number;

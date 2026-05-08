@@ -3,19 +3,13 @@
 import { LegWithScore } from "@/lib/types";
 import { StatusBadge } from "./StatusBadge";
 
-const betTypeLabels: Record<string, string> = {
-  spread: "Spread",
-  moneyline: "ML",
-  over_under: "O/U",
-  prop: "Prop",
-};
-
 export function LegRow({ leg }: { leg: LegWithScore }) {
   const oddsStr =
     leg.odds > 0 ? `+${leg.odds}` : String(leg.odds);
 
+  const isProp = leg.betType === "prop";
   const hasStatProgress =
-    leg.betType === "prop" &&
+    isProp &&
     leg.currentStatValue != null &&
     leg.targetStatValue != null;
 
@@ -37,13 +31,10 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
         <div className="font-semibold text-sm">
           {leg.team}
         </div>
-        <div className="text-sm text-muted-foreground">
-          {betTypeLabels[leg.betType] || leg.betType} {leg.line}{" "}
-          <span className="font-mono">({oddsStr})</span>
-        </div>
 
-        {hasStatProgress && (
-          <div className="mt-1.5">
+        {hasStatProgress ? (
+          /* Compact: stat progress with odds inline */
+          <div className="mt-1">
             <div className="flex items-center gap-2 text-sm">
               <span className="font-mono font-bold text-lg">
                 {leg.currentStatValue}
@@ -51,6 +42,9 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
               <span className="text-muted-foreground">/</span>
               <span className="text-muted-foreground">
                 {leg.targetStatValue} {leg.statLabel}
+              </span>
+              <span className="font-mono text-xs text-muted-foreground">
+                ({oddsStr})
               </span>
               {leg.currentStatValue! >= leg.targetStatValue! ? (
                 <span className="text-green-600 font-semibold text-xs">HIT</span>
@@ -75,6 +69,12 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
                 }}
               />
             </div>
+          </div>
+        ) : (
+          /* No stat progress — show line + odds */
+          <div className="text-sm text-muted-foreground">
+            {leg.line}{" "}
+            <span className="font-mono">({oddsStr})</span>
           </div>
         )}
       </div>
