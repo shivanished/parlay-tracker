@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { logger } from "@/lib/logger";
+import { fetchNBAScoreboard, fetchBoxScore } from "@/lib/espn";
 
 function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -10,7 +11,7 @@ const SYSTEM_PROMPT = `You are parsing OCR text extracted from a sportsbook parl
 
 For each leg, return:
 - player: player name if it's a player prop, empty string for team bets
-- team: team name (infer from player or context if possible)
+- team: team name if visible in context, empty string if unknown. Do NOT guess teams from player names — leave blank if not shown in OCR text
 - opponent: opposing team if visible, empty string otherwise
 - betType: one of "spread", "moneyline", "over_under", "player_prop"
 - line: the bet line exactly as shown (e.g. "1+ threes", "-3.5", "O 220.5", "15+ points")
@@ -19,8 +20,10 @@ For each leg, return:
 - confidence: 0.0 to 1.0 — how confident you are this leg was correctly parsed. 1.0 = clearly visible and unambiguous. 0.7 = partially visible or inferred. 0.3 = guessing
 - gameDate: ISO date string (YYYY-MM-DD) if a date is visible in the text, null otherwise
 
+IMPORTANT: For team names, ONLY use what's explicitly in the OCR text (like game headers "@ Team A at Team B"). Do NOT infer teams from your knowledge of player rosters — your roster data may be outdated due to trades.
+
 Common OCR patterns:
-- "Cade Cunningham: 1+ threes" → player_prop, player="Cade Cunningham", line="1+ threes", stat="threes"
+- "Cade Cunningham: 1+ threes" → player_prop, player="Cade Cunningham", line="1+ threes", stat="threes", team="" (no team shown)
 - "Lakers -3.5 (-110)" → spread, team="Lakers", line="-3.5", odds=-110
 - "Over 220.5 (-110)" → over_under, line="O 220.5"
 - Lines showing current stats like "5 points" below a leg are live updates, NOT bet legs — skip them
@@ -60,6 +63,125 @@ const responseSchema = {
   },
 };
 
+interface ParsedLeg {
+  player: string;
+  team: string;
+  opponent: string;
+  betType: string;
+  line: string;
+  stat: string | null;
+  odds: number;
+  confidence: number;
+  gameDate: string | null;
+}
+
+// Look up players in today's ESPN box scores to get accurate team info
+async function enrichWithESPNRosters(legs: ParsedLeg[]): Promise<ParsedLeg[]> {
+  const playerLegs = legs.filter((l) => l.betType === "player_prop" && l.player);
+  if (playerLegs.length === 0) return legs;
+
+  // Fetch today's scoreboard
+  let games;
+  try {
+    games = await fetchNBAScoreboard();
+  } catch {
+    logger.warn("Could not fetch scoreboard for roster enrichment");
+    return legs;
+  }
+
+  if (games.length === 0) return legs;
+
+  // Fetch box scores for all games
+  const allPlayers: { playerName: string; team: string; opponent: string; eventId: string }[] = [];
+
+  await Promise.all(
+    games.map(async (game) => {
+      try {
+        const boxScore = await fetchBoxScore(game.espnEventId);
+        for (const p of boxScore) {
+          // Determine which team this player is on by checking if their name
+          // appears — we need the team abbr. The fetchBoxScore doesn't return team info per player.
+          // We'll use the ESPN summary API directly for team mapping.
+          allPlayers.push({
+            playerName: p.playerName,
+            team: "", // filled below
+            opponent: "",
+            eventId: game.espnEventId,
+          });
+        }
+      } catch {
+        // skip this game
+      }
+    })
+  );
+
+  // Need team info per player — refetch with team context
+  const playerTeamMap = new Map<string, { team: string; opponent: string; eventId: string }>();
+
+  await Promise.all(
+    games.map(async (game) => {
+      try {
+        const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${game.espnEventId}`;
+        const res = await fetch(url, { next: { revalidate: 0 } });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const boxPlayers = data?.boxscore?.players;
+        if (!boxPlayers) return;
+
+        for (const teamBlock of boxPlayers) {
+          const teamName = teamBlock.team?.displayName || "";
+          const teamAbbr = teamBlock.team?.abbreviation || "";
+          const opponentAbbr = game.homeTeam === teamAbbr ? game.awayTeam : game.homeTeam;
+
+          for (const athlete of teamBlock.statistics?.[0]?.athletes || []) {
+            const name = athlete.athlete?.displayName;
+            if (name) {
+              playerTeamMap.set(name.toLowerCase(), {
+                team: teamName,
+                opponent: opponentAbbr,
+                eventId: game.espnEventId,
+              });
+            }
+          }
+        }
+      } catch {
+        // skip
+      }
+    })
+  );
+
+  // Enrich legs with accurate team data
+  return legs.map((leg) => {
+    if (leg.betType !== "player_prop" || !leg.player) return leg;
+
+    const match = playerTeamMap.get(leg.player.toLowerCase());
+    if (match) {
+      const changed = match.team !== leg.team;
+      if (changed) {
+        logger.info("Corrected player team", {
+          player: leg.player,
+          from: leg.team || "(empty)",
+          to: match.team,
+        });
+      }
+      return {
+        ...leg,
+        team: match.team,
+        opponent: match.opponent,
+      };
+    } else {
+      logger.warn("Player not found in today's box scores", {
+        player: leg.player,
+        aiTeam: leg.team,
+        gamesChecked: games.length,
+      });
+    }
+
+    return leg;
+  });
+}
+
 export async function POST(req: NextRequest) {
   logger.request("POST", "/api/parse-ocr");
 
@@ -79,7 +201,7 @@ export async function POST(req: NextRequest) {
 
     const openai = getOpenAI();
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
+      model: "gpt-5.4-mini",
       response_format: responseSchema,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
@@ -95,16 +217,15 @@ export async function POST(req: NextRequest) {
     }
 
     const parsed = JSON.parse(content);
-    logger.info("OCR parsed by AI", {
+    logger.info("AI parsed", {
       legs: parsed.legs.length,
-      avgConfidence: parsed.legs.length > 0
-        ? Math.round(parsed.legs.reduce((s: number, l: { confidence: number }) => s + l.confidence, 0) / parsed.legs.length * 100)
-        : 0,
-      model: completion.model,
       tokens: completion.usage?.total_tokens,
     });
 
-    return NextResponse.json({ legs: parsed.legs, rawText: ocrText });
+    // Enrich with real ESPN roster data
+    const enrichedLegs = await enrichWithESPNRosters(parsed.legs);
+
+    return NextResponse.json({ legs: enrichedLegs, rawText: ocrText });
   } catch (err) {
     logger.error("OCR parse failed", { error: String(err) });
     return NextResponse.json(
