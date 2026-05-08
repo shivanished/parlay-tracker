@@ -10,6 +10,7 @@ import { ManualEntryForm } from "@/components/ManualEntryForm";
 import { ScreenshotUploader } from "@/components/ScreenshotUploader";
 import { LegConfirmation } from "@/components/LegConfirmation";
 import { ParsedLeg } from "@/lib/types";
+import { resolveTeamAbbr } from "@/lib/team-matcher";
 
 type Mode = "choose" | "manual" | "screenshot" | "confirm";
 
@@ -31,7 +32,9 @@ export default function NewParlayPage() {
     const payload = {
       wagerAmount: wager ? parseFloat(wager) : undefined,
       legs: legs.map((l) => ({
-        team: l.player ? `${l.player} (${l.team})` : l.team,
+        team: l.player
+          ? `${l.player} (${resolveTeamAbbr(l.team) || l.team})`
+          : l.team,
         opponent: l.opponent,
         betType: l.betType === "player_prop" ? "prop" : l.betType,
         line: l.line,

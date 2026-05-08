@@ -5,6 +5,15 @@ import { logger } from "@/lib/logger";
 interface LegUpdate {
   id: string;
   status: string;
+  finalStatValue?: number;
+  targetStatValue?: number;
+  statLabel?: string;
+  gameHomeTeam?: string;
+  gameAwayTeam?: string;
+  gameHomeScore?: number;
+  gameAwayScore?: number;
+  gamePeriod?: string;
+  gameCompleted?: boolean;
 }
 
 export async function POST(
@@ -20,24 +29,32 @@ export async function POST(
       return NextResponse.json({ error: "legs required" }, { status: 400 });
     }
 
-    // Validate all statuses are final
     const finalStatuses = ["won", "lost", "push"];
     const allFinal = legs.every((l) => finalStatuses.includes(l.status));
     if (!allFinal) {
       return NextResponse.json({ error: "All legs must have final status" }, { status: 400 });
     }
 
-    // Update each leg
     await Promise.all(
       legs.map((leg) =>
         prisma.leg.update({
           where: { id: leg.id },
-          data: { status: leg.status },
+          data: {
+            status: leg.status,
+            finalStatValue: leg.finalStatValue ?? null,
+            targetStatValue: leg.targetStatValue ?? null,
+            statLabel: leg.statLabel ?? null,
+            gameHomeTeam: leg.gameHomeTeam ?? null,
+            gameAwayTeam: leg.gameAwayTeam ?? null,
+            gameHomeScore: leg.gameHomeScore ?? null,
+            gameAwayScore: leg.gameAwayScore ?? null,
+            gamePeriod: leg.gamePeriod ?? null,
+            gameCompleted: leg.gameCompleted ?? null,
+          },
         })
       )
     );
 
-    // Determine parlay status
     const anyLost = legs.some((l) => l.status === "lost");
     const parlayStatus = anyLost ? "lost" : "won";
 

@@ -29,6 +29,15 @@ export default async function ParlayPage({
       betType: l.betType as ParlayWithLegs["legs"][0]["betType"],
       status: l.status as ParlayWithLegs["legs"][0]["status"],
       score: undefined,
+      finalStatValue: l.finalStatValue,
+      targetStatValue: l.targetStatValue,
+      statLabel: l.statLabel,
+      gameHomeTeam: l.gameHomeTeam,
+      gameAwayTeam: l.gameAwayTeam,
+      gameHomeScore: l.gameHomeScore,
+      gameAwayScore: l.gameAwayScore,
+      gamePeriod: l.gamePeriod,
+      gameCompleted: l.gameCompleted,
     })),
   };
 

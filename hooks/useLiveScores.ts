@@ -131,9 +131,33 @@ export function useLiveScores(
 
   // Update leg statuses
   useEffect(() => {
-    // Already finalized in DB — just use DB statuses
+    // Already finalized in DB — reconstruct display data from saved fields
     if (alreadyFinalized) {
-      setUpdatedLegs(legs);
+      const restored = legs.map((leg) => {
+        const hasGameData = leg.gameHomeTeam && leg.gameAwayTeam;
+        const restoredScore: GameScore | undefined = hasGameData
+          ? {
+              homeTeam: leg.gameHomeTeam!,
+              awayTeam: leg.gameAwayTeam!,
+              homeScore: leg.gameHomeScore ?? 0,
+              awayScore: leg.gameAwayScore ?? 0,
+              period: leg.gamePeriod ?? "Final",
+              clock: "0:00",
+              isLive: false,
+              isComplete: true,
+              espnEventId: leg.espnEventId || "",
+            }
+          : undefined;
+
+        return {
+          ...leg,
+          score: restoredScore,
+          currentStatValue: leg.finalStatValue ?? undefined,
+          targetStatValue: leg.targetStatValue ?? undefined,
+          statLabel: leg.statLabel ?? undefined,
+        };
+      });
+      setUpdatedLegs(restored);
       return;
     }
 
@@ -205,13 +229,25 @@ export function useLiveScores(
 
     finalizedRef.current = true;
 
-    const legUpdates = updatedLegs.map((l) => ({ id: l.id, status: l.status }));
+    const legUpdates = updatedLegs.map((l) => ({
+      id: l.id,
+      status: l.status,
+      finalStatValue: l.currentStatValue ?? null,
+      targetStatValue: l.targetStatValue ?? null,
+      statLabel: l.statLabel ?? null,
+      gameHomeTeam: l.score?.homeTeam ?? null,
+      gameAwayTeam: l.score?.awayTeam ?? null,
+      gameHomeScore: l.score?.homeScore ?? null,
+      gameAwayScore: l.score?.awayScore ?? null,
+      gamePeriod: l.score?.period ?? null,
+      gameCompleted: l.score?.isComplete ?? null,
+    }));
     fetch(`/api/parlays/${parlayId}/finalize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ legs: legUpdates }),
     }).catch(() => {
-      finalizedRef.current = false; // retry next cycle
+      finalizedRef.current = false;
     });
   }, [updatedLegs, parlayId, alreadyFinalized]);
 

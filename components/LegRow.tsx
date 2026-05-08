@@ -16,8 +16,8 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
 
   const hasStatProgress =
     leg.betType === "prop" &&
-    leg.currentStatValue !== undefined &&
-    leg.targetStatValue !== undefined;
+    leg.currentStatValue != null &&
+    leg.targetStatValue != null;
 
   return (
     <div

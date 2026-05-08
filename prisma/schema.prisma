@@ -30,4 +30,15 @@ model Leg {
   odds        Int
   status      String  @default("pending")
   espnEventId String?
+  // Final stat data (persisted when game ends)
+  finalStatValue  Float?
+  targetStatValue Float?
+  statLabel       String?
+  // Game score (persisted when game ends)
+  gameHomeTeam  String?
+  gameAwayTeam  String?
+  gameHomeScore Int?
+  gameAwayScore Int?
+  gamePeriod    String?
+  gameCompleted Boolean?
 }

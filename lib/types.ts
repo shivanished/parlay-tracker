@@ -40,9 +40,17 @@ export interface LegWithScore {
   espnEventId: string | null;
   score?: GameScore;
   playerStat?: PlayerStat;
-  currentStatValue?: number;
-  targetStatValue?: number;
-  statLabel?: string;
+  currentStatValue?: number | null;
+  targetStatValue?: number | null;
+  statLabel?: string | null;
+  // Persisted final data from DB
+  finalStatValue?: number | null;
+  gameHomeTeam?: string | null;
+  gameAwayTeam?: string | null;
+  gameHomeScore?: number | null;
+  gameAwayScore?: number | null;
+  gamePeriod?: string | null;
+  gameCompleted?: boolean | null;
 }
 
 export interface ParsedLeg {
