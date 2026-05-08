@@ -55,7 +55,7 @@ function groupLegsByGame(legs: LegWithScore[]): GameGroup[] {
 export function ParlayDetail({ parlay }: { parlay: ParlayWithLegs }) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
-  const { legs } = useLiveScores(parlay.legs, parlay.status === "active");
+  const { legs } = useLiveScores(parlay.legs, true, parlay.createdAt);
   const prob = parlayProbability(legs);
 
   const oddsStr = parlay.totalOdds

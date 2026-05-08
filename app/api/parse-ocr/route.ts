@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { logger } from "@/lib/logger";
 import { fetchNBAScoreboard, fetchBoxScore } from "@/lib/espn";
+import { fetchPlayerPropOdds, getMarketKey, findPlayerOdds } from "@/lib/odds-api";
+import { parseStatFromLine } from "@/lib/bet-evaluator";
 
 function getOpenAI() {
   return new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -182,6 +184,57 @@ async function enrichWithESPNRosters(legs: ParsedLeg[]): Promise<ParsedLeg[]> {
   });
 }
 
+// Look up real pre-game odds for legs that don't have them from the screenshot
+async function enrichWithRealOdds(legs: ParsedLeg[]): Promise<ParsedLeg[]> {
+  // Only enrich legs with missing/default odds
+  const needsOdds = legs.filter(
+    (l) => l.betType === "player_prop" && l.player && (l.odds === 0 || l.odds === -110)
+  );
+  if (needsOdds.length === 0) return legs;
+
+  // Collect unique stat markets needed
+  const marketsNeeded = new Set<string>();
+  for (const leg of needsOdds) {
+    const { statKey } = parseStatFromLine(leg.line);
+    if (statKey) {
+      const market = getMarketKey(statKey);
+      if (market) marketsNeeded.add(market);
+    }
+  }
+
+  if (marketsNeeded.size === 0) return legs;
+
+  // Fetch odds for each market
+  const oddsCache = new Map<string, Awaited<ReturnType<typeof fetchPlayerPropOdds>>>();
+  await Promise.all(
+    [...marketsNeeded].map(async (market) => {
+      const events = await fetchPlayerPropOdds(market);
+      oddsCache.set(market, events);
+    })
+  );
+
+  return legs.map((leg) => {
+    if (leg.betType !== "player_prop" || !leg.player) return leg;
+    if (leg.odds !== 0 && leg.odds !== -110) return leg; // already has real odds from screenshot
+
+    const { target, statKey } = parseStatFromLine(leg.line);
+    if (!statKey) return leg;
+
+    const market = getMarketKey(statKey);
+    if (!market) return leg;
+
+    const events = oddsCache.get(market) || [];
+    const realOdds = findPlayerOdds(events, leg.player, target);
+
+    if (realOdds !== null) {
+      logger.info("Found real odds", { player: leg.player, line: leg.line, odds: realOdds });
+      return { ...leg, odds: realOdds };
+    }
+
+    return leg;
+  });
+}
+
 export async function POST(req: NextRequest) {
   logger.request("POST", "/api/parse-ocr");
 
@@ -225,7 +278,10 @@ export async function POST(req: NextRequest) {
     // Enrich with real ESPN roster data
     const enrichedLegs = await enrichWithESPNRosters(parsed.legs);
 
-    return NextResponse.json({ legs: enrichedLegs, rawText: ocrText });
+    // Look up real odds for legs missing them
+    const legsWithOdds = await enrichWithRealOdds(enrichedLegs);
+
+    return NextResponse.json({ legs: legsWithOdds, rawText: ocrText });
   } catch (err) {
     logger.error("OCR parse failed", { error: String(err) });
     return NextResponse.json(

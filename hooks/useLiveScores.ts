@@ -7,20 +7,31 @@ import { resolveTeamAbbr } from "@/lib/team-matcher";
 import { BetType } from "@/lib/types";
 
 function extractPlayerName(team: string): string | null {
-  // Format: "Cade Cunningham (Detroit Pistons)" → "Cade Cunningham"
   const match = team.match(/^(.+?)\s*\(/);
   return match ? match[1].trim() : null;
 }
 
+function toESPNDate(isoDate: string): string {
+  // "2026-05-07T..." → "20260507"
+  return isoDate.slice(0, 10).replace(/-/g, "");
+}
+
 export function useLiveScores(
   legs: LegWithScore[],
-  enabled: boolean = true
+  enabled: boolean = true,
+  parlayCreatedAt?: string
 ) {
   const [scores, setScores] = useState<GameScore[]>([]);
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat[]>>({});
   const [updatedLegs, setUpdatedLegs] = useState<LegWithScore[]>(legs);
   const scoresRef = useRef(scores);
   scoresRef.current = scores;
+
+  // Determine which date to fetch scores for
+  const scoreDate = parlayCreatedAt ? toESPNDate(parlayCreatedAt) : undefined;
+  const isHistorical = parlayCreatedAt
+    ? new Date(parlayCreatedAt).toDateString() !== new Date().toDateString()
+    : false;
 
   const fetchPlayerStats = useCallback(async (eventIds: string[]) => {
     if (eventIds.length === 0) return;
@@ -34,16 +45,16 @@ export function useLiveScores(
     }
   }, []);
 
-  // Fetch scores + player stats
   const fetchAll = useCallback(async () => {
-    const scoresRes = await fetch("/api/scores").catch(() => null);
+    const dateParam = scoreDate ? `?date=${scoreDate}` : "";
+    const scoresRes = await fetch(`/api/scores${dateParam}`).catch(() => null);
     let latestScores: GameScore[] = [];
     if (scoresRes?.ok) {
       latestScores = await scoresRes.json();
       setScores(latestScores);
     }
 
-    // Collect event IDs for all prop legs — from espnEventId or by matching scores
+    // Collect event IDs for all prop legs
     const eventIds = new Set<string>();
     for (const leg of legs) {
       if (leg.betType !== "prop") continue;
@@ -63,7 +74,7 @@ export function useLiveScores(
     if (eventIds.size > 0) {
       await fetchPlayerStats([...eventIds]);
     }
-  }, [fetchPlayerStats, legs]);
+  }, [fetchPlayerStats, legs, scoreDate]);
 
   // Update leg statuses when scores/stats change
   useEffect(() => {
@@ -89,12 +100,10 @@ export function useLiveScores(
         return leg;
       }
 
-      // Don't override final statuses from DB
       if (leg.status === "won" || leg.status === "lost" || leg.status === "push") {
         return { ...leg, score: game };
       }
 
-      // For props, find player stat
       if (leg.betType === "prop") {
         const playerName = extractPlayerName(leg.team);
         const eventId = leg.espnEventId || game.espnEventId;
@@ -140,18 +149,20 @@ export function useLiveScores(
     setUpdatedLegs(updated);
   }, [scores, playerStats, legs]);
 
-  // Polling
+  // Polling — historical parlays fetch once, no polling
   useEffect(() => {
     if (!enabled) return;
 
     fetchAll();
+
+    if (isHistorical) return; // no polling for past games
 
     const hasLiveGames = scoresRef.current.some((s) => s.isLive);
     const interval = hasLiveGames ? 30000 : 120000;
 
     const timer = setInterval(fetchAll, interval);
     return () => clearInterval(timer);
-  }, [enabled, fetchAll]);
+  }, [enabled, fetchAll, isHistorical]);
 
   return { scores, legs: updatedLegs };
 }
