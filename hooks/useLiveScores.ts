@@ -22,22 +22,23 @@ function getCandidateDates(isoDate: string): string[] {
   const d = new Date(isoDate);
   const dayBefore = new Date(d);
   dayBefore.setDate(dayBefore.getDate() - 1);
-
   const candidates = new Set<string>();
   candidates.add(toESPNDate(d));
   candidates.add(toESPNDate(dayBefore));
-
-  const localDate = isoDate.slice(0, 10).replace(/-/g, "");
-  candidates.add(localDate);
-
+  candidates.add(isoDate.slice(0, 10).replace(/-/g, ""));
   const parts = isoDate.slice(0, 10).split("-").map(Number);
-  const localDayBefore = new Date(parts[0], parts[1] - 1, parts[2] - 1);
-  candidates.add(toESPNDate(localDayBefore));
-
+  candidates.add(toESPNDate(new Date(parts[0], parts[1] - 1, parts[2] - 1)));
   return [...candidates];
 }
 
 const FINAL_STATUSES = new Set(["won", "lost", "push"]);
+
+interface PlayerLookup {
+  teamAbbr: string;
+  eventId: string;
+  game: GameScore;
+  stat: PlayerStat;
+}
 
 export function useLiveScores(
   legs: LegWithScore[],
@@ -72,57 +73,22 @@ export function useLiveScores(
     }
   }, []);
 
+  // Fetch scores for date, then box scores for all games
   const fetchAll = useCallback(async () => {
-    // Collect team abbrs we can resolve
-    const neededTeams = new Set<string>();
-    let hasUnresolvableLegs = false;
-    for (const leg of legs) {
-      const abbr = resolveTeamAbbr(leg.team);
-      if (abbr) {
-        neededTeams.add(abbr);
-      } else {
-        hasUnresolvableLegs = true;
-      }
-    }
-
     let allScores: GameScore[] = [];
 
     if (isToday) {
       const res = await fetch("/api/scores").catch(() => null);
       if (res?.ok) allScores = await res.json();
     } else if (parlayCreatedAt) {
-      const dates = getCandidateDates(parlayCreatedAt);
-
-      if (hasUnresolvableLegs) {
-        // Can't filter by team — fetch ALL games for candidate dates
-        for (const date of dates) {
-          const res = await fetch(`/api/scores?date=${date}`).catch(() => null);
-          if (!res?.ok) continue;
-          const dayScores: GameScore[] = await res.json();
-          for (const game of dayScores) {
-            if (!allScores.some((s) => s.espnEventId === game.espnEventId)) {
-              allScores.push(game);
-            }
-          }
-        }
-      } else {
-        const foundTeams = new Set<string>();
-        for (const date of dates) {
-          const allFound = [...neededTeams].every((t) => foundTeams.has(t));
-          if (allFound) break;
-
-          const res = await fetch(`/api/scores?date=${date}`).catch(() => null);
-          if (!res?.ok) continue;
-          const dayScores: GameScore[] = await res.json();
-
-          for (const game of dayScores) {
-            if (neededTeams.has(game.homeTeam) || neededTeams.has(game.awayTeam)) {
-              if (!allScores.some((s) => s.espnEventId === game.espnEventId)) {
-                allScores.push(game);
-                foundTeams.add(game.homeTeam);
-                foundTeams.add(game.awayTeam);
-              }
-            }
+      // Fetch ALL games for candidate dates
+      for (const date of getCandidateDates(parlayCreatedAt)) {
+        const res = await fetch(`/api/scores?date=${date}`).catch(() => null);
+        if (!res?.ok) continue;
+        const dayScores: GameScore[] = await res.json();
+        for (const game of dayScores) {
+          if (!allScores.some((s) => s.espnEventId === game.espnEventId)) {
+            allScores.push(game);
           }
         }
       }
@@ -130,36 +96,23 @@ export function useLiveScores(
 
     setScores(allScores);
 
-    // Collect event IDs — for unresolvable legs, fetch ALL game box scores
-    const eventIds = new Set<string>();
+    // Fetch box scores for ALL games
+    const eventIds = allScores.map((s) => s.espnEventId);
+    // Also include any espnEventIds stored on legs
     for (const leg of legs) {
-      if (leg.espnEventId) {
-        eventIds.add(leg.espnEventId);
-      } else {
-        const teamAbbr = resolveTeamAbbr(leg.team);
-        if (teamAbbr) {
-          const game = allScores.find(
-            (s) => s.homeTeam === teamAbbr || s.awayTeam === teamAbbr
-          );
-          if (game) eventIds.add(game.espnEventId);
-        }
+      if (leg.espnEventId && !eventIds.includes(leg.espnEventId)) {
+        eventIds.push(leg.espnEventId);
       }
     }
 
-    // If we have unresolvable legs, fetch box scores for ALL games
-    if (hasUnresolvableLegs) {
-      for (const game of allScores) {
-        eventIds.add(game.espnEventId);
-      }
-    }
-
-    if (eventIds.size > 0) {
-      await fetchPlayerStats([...eventIds]);
+    if (eventIds.length > 0) {
+      await fetchPlayerStats(eventIds);
     }
   }, [fetchPlayerStats, legs, isToday, parlayCreatedAt]);
 
-  // Update leg statuses
+  // Build player lookup and update legs
   useEffect(() => {
+    // Fully finalized with rich DB data — restore from DB
     if (fullyFinalized) {
       const restored = legs.map((leg) => {
         const hasGameData = leg.gameHomeTeam && leg.gameAwayTeam;
@@ -176,7 +129,6 @@ export function useLiveScores(
               espnEventId: leg.espnEventId || "",
             }
           : undefined;
-
         return {
           ...leg,
           score: restoredScore,
@@ -194,78 +146,57 @@ export function useLiveScores(
       return;
     }
 
-    // Build a player→{eventId, game, teamAbbr} map from all fetched box scores
-    const playerGameMap = new Map<string, { eventId: string; game: GameScore; teamAbbr: string }>();
+    // Build player lookup: playerName → { teamAbbr, eventId, game, stat }
+    const playerLookup = new Map<string, PlayerLookup>();
     for (const [eventId, players] of Object.entries(playerStats)) {
       const game = scores.find((s) => s.espnEventId === eventId);
       if (!game) continue;
       for (const p of players) {
-        playerGameMap.set(p.playerName.toLowerCase(), { eventId, game, teamAbbr: p.teamAbbr });
+        playerLookup.set(p.playerName.toLowerCase(), {
+          teamAbbr: p.teamAbbr,
+          eventId,
+          game,
+          stat: p,
+        });
       }
     }
 
     const updated = legs.map((leg) => {
-      const teamAbbr = resolveTeamAbbr(leg.team);
       const playerName = extractPlayerName(leg.team);
+      const teamAbbr = resolveTeamAbbr(leg.team);
 
-      // Find game: by team abbr, or by player name in box scores
-      let game = teamAbbr
-        ? scores.find((s) => s.homeTeam === teamAbbr || s.awayTeam === teamAbbr)
-        : undefined;
+      if (leg.betType === "prop" && playerName) {
+        // Props: look up player directly in box scores
+        const lookup = playerLookup.get(playerName.toLowerCase());
+        if (!lookup) return leg;
 
-      let matchedEventId = leg.espnEventId || game?.espnEventId;
-
-      // Fallback: find game by player name in box scores
-      let resolvedTeamAbbr = teamAbbr;
-      if (!game && playerName) {
-        const playerMatch = playerGameMap.get(playerName.toLowerCase());
-        if (playerMatch) {
-          game = playerMatch.game;
-          matchedEventId = playerMatch.eventId;
-          resolvedTeamAbbr = playerMatch.teamAbbr;
-        }
-      }
-
-      if (!game) return leg;
-
-      // Fix team display if it has empty parens
-      let displayTeam = leg.team;
-      if (playerName && leg.team.includes("()") && resolvedTeamAbbr) {
-        displayTeam = `${playerName} (${resolvedTeamAbbr})`;
-      }
-
-      if (leg.betType === "prop") {
-        const eventPlayers = playerStats[matchedEventId || ""] || [];
-        const stat = playerName
-          ? eventPlayers.find(
-              (p) => p.playerName.toLowerCase() === playerName.toLowerCase()
-            )
-          : undefined;
-
-        // If we still don't have teamAbbr, get it from the matched stat
-        if (displayTeam.includes("()") && stat?.teamAbbr) {
-          displayTeam = `${playerName} (${stat.teamAbbr})`;
-        }
+        const displayTeam = `${playerName} (${lookup.teamAbbr})`;
 
         const { status: propStatus, currentValue, target, statLabel } = evaluateProp(
           leg.line,
-          stat,
-          game.isComplete
+          lookup.stat,
+          lookup.game.isComplete
         );
 
         return {
           ...leg,
           team: displayTeam,
-          score: game,
-          status: stat ? propStatus : (game.isComplete ? "lost" : "pending"),
-          playerStat: stat,
+          score: lookup.game,
+          status: propStatus,
+          playerStat: lookup.stat,
           currentStatValue: currentValue,
           targetStatValue: target,
           statLabel,
         };
       }
 
+      // Non-prop: match by team abbr
       if (!teamAbbr) return leg;
+
+      const game = scores.find(
+        (s) => s.homeTeam === teamAbbr || s.awayTeam === teamAbbr
+      );
+      if (!game) return leg;
 
       const newStatus = evaluateLeg(
         leg.betType as BetType,
@@ -274,13 +205,13 @@ export function useLiveScores(
         game
       );
 
-      return { ...leg, team: displayTeam, score: game, status: newStatus };
+      return { ...leg, score: game, status: newStatus };
     });
 
     setUpdatedLegs(updated);
   }, [scores, playerStats, legs, fullyFinalized]);
 
-  // Auto-finalize
+  // Auto-finalize when all legs resolved
   useEffect(() => {
     if (fullyFinalized || finalizedRef.current || !parlayId) return;
 
