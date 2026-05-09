@@ -17,13 +17,13 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
     <div
       className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${
         leg.status === "won"
-          ? "bg-green-50/80"
+          ? "bg-positive-muted"
           : leg.status === "lost"
-            ? "bg-red-50/80"
+            ? "bg-negative-muted"
             : leg.status === "winning"
-              ? "bg-green-50/40"
+              ? "bg-positive-muted/50"
               : leg.status === "losing"
-                ? "bg-red-50/40"
+                ? "bg-negative-muted/50"
                 : ""
       }`}
     >
@@ -33,21 +33,20 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
         </div>
 
         {hasStatProgress ? (
-          /* Compact: stat progress with odds inline */
           <div className="mt-1">
             <div className="flex items-center gap-2 text-sm">
-              <span className="font-mono font-bold text-lg">
+              <span className="font-mono font-bold text-lg tabular-nums">
                 {leg.currentStatValue}
               </span>
               <span className="text-muted-foreground">/</span>
               <span className="text-muted-foreground">
                 {leg.targetStatValue} {leg.statLabel}
               </span>
-              <span className="font-mono text-xs text-muted-foreground">
+              <span className="font-mono text-xs text-muted-foreground tabular-nums">
                 ({oddsStr})
               </span>
               {leg.currentStatValue! >= leg.targetStatValue! ? (
-                <span className="text-green-600 font-semibold text-xs">HIT</span>
+                <span className="text-positive font-semibold text-xs">HIT</span>
               ) : (
                 <span className="text-xs text-muted-foreground">
                   need {leg.targetStatValue! - leg.currentStatValue!} more
@@ -58,7 +57,7 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   leg.currentStatValue! >= leg.targetStatValue!
-                    ? "bg-green-500"
+                    ? "bg-positive"
                     : "bg-yellow-500"
                 }`}
                 style={{
@@ -71,10 +70,9 @@ export function LegRow({ leg }: { leg: LegWithScore }) {
             </div>
           </div>
         ) : (
-          /* No stat progress — show line + odds */
           <div className="text-sm text-muted-foreground">
             {leg.line}{" "}
-            <span className="font-mono">({oddsStr})</span>
+            <span className="font-mono tabular-nums">({oddsStr})</span>
           </div>
         )}
       </div>

@@ -7,10 +7,10 @@ export function ProbabilityGauge({ probability }: { probability: number }) {
 
   const color =
     pct >= 50
-      ? "text-green-500"
+      ? "text-positive"
       : pct >= 25
         ? "text-yellow-500"
-        : "text-red-500";
+        : "text-negative";
 
   return (
     <div className="relative inline-flex items-center justify-center">
@@ -37,7 +37,7 @@ export function ProbabilityGauge({ probability }: { probability: number }) {
           className={`${color} transition-all duration-700`}
         />
       </svg>
-      <span className="absolute text-lg font-bold">{pct}%</span>
+      <span className="absolute text-lg font-bold font-mono tabular-nums">{pct}%</span>
     </div>
   );
 }

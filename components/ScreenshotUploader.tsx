@@ -187,7 +187,7 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
       <div
         onDrop={handleDrop}
         onDragOver={(e) => e.preventDefault()}
-        className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
+        className="border-2 border-dashed border-border/50 rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
         onClick={() => !processing && fileRef.current?.click()}
       >
         {preview ? (
@@ -221,7 +221,7 @@ export function ScreenshotUploader({ onParsed }: ScreenshotUploaderProps) {
       )}
 
       {error && (
-        <div className="text-sm text-red-600 bg-red-50 p-3 rounded">
+        <div className="text-sm text-negative bg-negative-muted p-3 rounded">
           {error}
         </div>
       )}

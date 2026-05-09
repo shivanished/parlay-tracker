@@ -1,7 +1,5 @@
-import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ParlayCard } from "@/components/ParlayCard";
-import { Button } from "@/components/ui/button";
 import { ParlayWithLegs } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +11,10 @@ export default async function Home() {
   });
 
   return (
-    <main className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Parlay Tracker</h1>
-        <Link href="/new">
-          <Button>+ New Parlay</Button>
-        </Link>
-      </div>
+    <div className="p-6">
+      <h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-4">
+        Active Parlays
+      </h2>
 
       {parlays.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
@@ -29,7 +24,7 @@ export default async function Home() {
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {parlays.map((parlay) => (
             <ParlayCard
               key={parlay.id}
@@ -48,6 +43,6 @@ export default async function Home() {
           ))}
         </div>
       )}
-    </main>
+    </div>
   );
 }

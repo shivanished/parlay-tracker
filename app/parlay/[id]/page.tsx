@@ -42,7 +42,7 @@ export default async function ParlayPage({
   };
 
   return (
-    <main className="p-6">
+    <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-4">
         <Link href="/">
           <Button variant="ghost" size="sm">
@@ -51,6 +51,6 @@ export default async function ParlayPage({
         </Link>
       </div>
       <ParlayDetail parlay={data} />
-    </main>
+    </div>
   );
 }

@@ -61,21 +61,21 @@ export default function NewParlayPage() {
   };
 
   return (
-    <main className="p-6">
+    <div className="p-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/">
           <Button variant="ghost" size="sm">
             &larr; Back
           </Button>
         </Link>
-        <h1 className="text-2xl font-bold">New Parlay</h1>
+        <h1 className="text-xl font-bold">New Parlay</h1>
       </div>
 
       {mode === "choose" && (
         <div className="grid grid-cols-2 gap-4">
           <button
             onClick={() => setMode("screenshot")}
-            className="border rounded-lg p-8 text-center hover:border-primary transition-colors"
+            className="border border-border/50 bg-surface rounded-lg p-8 text-center hover:bg-surface-hover hover:border-border transition-colors"
           >
             <div className="text-4xl mb-2">📸</div>
             <div className="font-semibold">Upload Screenshot</div>
@@ -85,7 +85,7 @@ export default function NewParlayPage() {
           </button>
           <button
             onClick={() => setMode("manual")}
-            className="border rounded-lg p-8 text-center hover:border-primary transition-colors"
+            className="border border-border/50 bg-surface rounded-lg p-8 text-center hover:bg-surface-hover hover:border-border transition-colors"
           >
             <div className="text-4xl mb-2">✍️</div>
             <div className="font-semibold">Manual Entry</div>
@@ -121,7 +121,7 @@ export default function NewParlayPage() {
       {mode === "confirm" && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="border rounded-lg p-4">
+            <div className="border border-border/50 bg-surface rounded-lg p-4">
               <Label htmlFor="game-date">Game Date</Label>
               <Input
                 id="game-date"
@@ -130,7 +130,7 @@ export default function NewParlayPage() {
                 onChange={(e) => setGameDate(e.target.value)}
               />
             </div>
-            <div className="border rounded-lg p-4">
+            <div className="border border-border/50 bg-surface rounded-lg p-4">
               <Label htmlFor="wager-confirm">Wager Amount ($)</Label>
               <Input
                 id="wager-confirm"
@@ -170,6 +170,6 @@ export default function NewParlayPage() {
           <ManualEntryForm />
         </div>
       )}
-    </main>
+    </div>
   );
 }

@@ -9,27 +9,27 @@ const statusConfig: Record<
 > = {
   pending: {
     label: "Pending",
-    className: "bg-gray-100 text-gray-700 border-gray-200",
+    className: "bg-white/5 text-muted-foreground border-white/10",
   },
   winning: {
     label: "Winning",
-    className: "bg-green-100 text-green-700 border-green-200 animate-pulse",
+    className: "bg-positive-muted text-positive border-positive/30 animate-pulse",
   },
   losing: {
     label: "Losing",
-    className: "bg-red-100 text-red-700 border-red-200 animate-pulse",
+    className: "bg-negative-muted text-negative border-negative/30 animate-pulse",
   },
   won: {
     label: "Won",
-    className: "bg-green-500 text-white border-green-600",
+    className: "bg-positive/20 text-positive border-positive/40",
   },
   lost: {
     label: "Lost",
-    className: "bg-red-500 text-white border-red-600",
+    className: "bg-negative/20 text-negative border-negative/40",
   },
   push: {
     label: "Push",
-    className: "bg-yellow-100 text-yellow-700 border-yellow-200",
+    className: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
   },
 };
 

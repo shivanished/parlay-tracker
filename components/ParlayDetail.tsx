@@ -12,9 +12,9 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const statusColors: Record<string, string> = {
-  active: "bg-blue-100 text-blue-700",
-  won: "bg-green-500 text-white",
-  lost: "bg-red-500 text-white",
+  active: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  won: "bg-positive/20 text-positive border-positive/40",
+  lost: "bg-negative/20 text-negative border-negative/40",
 };
 
 interface GameGroup {
@@ -28,7 +28,6 @@ function groupLegsByGame(legs: LegWithScore[]): GameGroup[] {
   const groups = new Map<string, GameGroup>();
 
   for (const leg of legs) {
-    // Group by espnEventId if available, else by score's eventId, else "unmatched"
     const eventId = leg.espnEventId || leg.score?.espnEventId || "unmatched";
 
     if (!groups.has(eventId)) {
@@ -42,7 +41,6 @@ function groupLegsByGame(legs: LegWithScore[]): GameGroup[] {
 
     const group = groups.get(eventId)!;
     group.legs.push(leg);
-    // Update score if this leg has one and group doesn't yet
     if (leg.score && !group.score) {
       group.score = leg.score;
       group.label = `${leg.score.awayTeam} @ ${leg.score.homeTeam}`;
@@ -102,42 +100,42 @@ export function ParlayDetail({ parlay }: { parlay: ParlayWithLegs }) {
         </Badge>
       </div>
 
-      <div className="flex items-center justify-between bg-muted/50 rounded-lg p-4">
+      <div className="flex items-center justify-between bg-surface rounded-lg p-4 border border-border/50">
         <div className="space-y-1">
-          <div className="text-sm text-muted-foreground">Total Odds</div>
-          <div className="text-xl font-bold font-mono">{oddsStr}</div>
+          <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Total Odds</div>
+          <div className="text-xl font-bold font-mono tabular-nums">{oddsStr}</div>
         </div>
         {parlay.wagerAmount && (
           <>
             <div className="space-y-1 text-center">
-              <div className="text-sm text-muted-foreground">Wager</div>
-              <div className="text-xl font-bold">${parlay.wagerAmount}</div>
+              <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Wager</div>
+              <div className="text-xl font-bold font-mono tabular-nums">${parlay.wagerAmount}</div>
             </div>
             <div className="space-y-1 text-right">
-              <div className="text-sm text-muted-foreground">Payout</div>
-              <div className="text-xl font-bold text-green-600">
+              <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Payout</div>
+              <div className="text-xl font-bold text-positive font-mono tabular-nums">
                 ${parlay.potentialPayout?.toFixed(2)}
               </div>
             </div>
           </>
         )}
         <div className="flex flex-col items-center">
-          <div className="text-sm text-muted-foreground mb-1">Hit Probability</div>
+          <div className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-1">Hit Probability</div>
           <ProbabilityGauge probability={prob} />
         </div>
       </div>
 
       <div className="space-y-4">
-        <h2 className="font-semibold">Legs</h2>
+        <h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Legs</h2>
         {gameGroups.map((group) => (
-          <div key={group.key} className="border rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-muted/30 border-b">
+          <div key={group.key} className="border border-border/50 rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-surface border-b border-border/50">
               <span className="font-semibold text-sm">{group.label}</span>
               {group.score && (
                 <LiveScore score={group.score} />
               )}
             </div>
-            <div className="divide-y">
+            <div className="divide-y divide-border/30">
               {group.legs.map((leg) => (
                 <div key={leg.id} className="px-2 py-1">
                   <LegRow leg={leg} />
@@ -148,7 +146,7 @@ export function ParlayDetail({ parlay }: { parlay: ParlayWithLegs }) {
         ))}
       </div>
 
-      <div className="pt-4 border-t">
+      <div className="pt-4 border-t border-border/50">
         <Button
           variant="destructive"
           size="sm"

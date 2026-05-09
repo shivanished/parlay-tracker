@@ -146,7 +146,7 @@ export function ManualEntryForm() {
       {legs.map((leg, i) => (
         <div
           key={i}
-          className="border rounded-lg p-4 space-y-3 relative"
+          className="border border-border/50 bg-surface rounded-lg p-4 space-y-3 relative"
         >
           <div className="flex justify-between items-center">
             <h3 className="font-semibold text-sm">Leg {i + 1}</h3>
@@ -156,7 +156,7 @@ export function ManualEntryForm() {
                 variant="ghost"
                 size="sm"
                 onClick={() => removeLeg(i)}
-                className="text-red-500 h-6 px-2"
+                className="text-negative h-6 px-2"
               >
                 Remove
               </Button>
@@ -250,7 +250,7 @@ export function ManualEntryForm() {
         + Add Leg
       </Button>
 
-      <div className="border rounded-lg p-4">
+      <div className="border border-border/50 bg-surface rounded-lg p-4">
         <Label htmlFor="wager">Wager Amount ($)</Label>
         <Input
           id="wager"

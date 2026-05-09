@@ -44,7 +44,7 @@ export function LegConfirmation({ legs: initial, onConfirm, onBack }: LegConfirm
         <div>
           <h2 className="text-lg font-semibold">{legs.length} legs detected</h2>
           {reviewCount > 0 && (
-            <p className="text-sm text-yellow-600">
+            <p className="text-sm text-yellow-400">
               {reviewCount} leg{reviewCount > 1 ? "s" : ""} need review
             </p>
           )}
@@ -58,7 +58,7 @@ export function LegConfirmation({ legs: initial, onConfirm, onBack }: LegConfirm
         <div
           key={i}
           className={`border rounded-lg p-4 space-y-3 ${
-            needsReview(leg) ? "border-yellow-400 bg-yellow-50/50" : ""
+            needsReview(leg) ? "border-yellow-500/40 bg-yellow-500/10" : "border-border/50 bg-surface"
           }`}
         >
           <div className="flex items-center justify-between">
@@ -67,11 +67,11 @@ export function LegConfirmation({ legs: initial, onConfirm, onBack }: LegConfirm
                 Leg {i + 1}
               </span>
               {needsReview(leg) ? (
-                <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300 text-xs">
+                <Badge variant="outline" className="bg-yellow-500/15 text-yellow-400 border-yellow-500/30 text-xs">
                   Needs review ({Math.round(leg.confidence * 100)}%)
                 </Badge>
               ) : (
-                <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300 text-xs">
+                <Badge variant="outline" className="bg-positive-muted text-positive border-positive/30 text-xs">
                   {Math.round(leg.confidence * 100)}% confident
                 </Badge>
               )}
@@ -81,7 +81,7 @@ export function LegConfirmation({ legs: initial, onConfirm, onBack }: LegConfirm
               variant="ghost"
               size="sm"
               onClick={() => removeLeg(i)}
-              className="text-red-500 h-6 px-2"
+              className="text-negative h-6 px-2"
             >
               Remove
             </Button>
