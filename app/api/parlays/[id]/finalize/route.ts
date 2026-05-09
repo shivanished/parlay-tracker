@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { getUser } from "@/lib/supabase/server";
 
 interface LegUpdate {
   id: string;
@@ -20,9 +21,17 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const user = await getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { id } = await params;
 
   try {
+    const parlay = await prisma.parlay.findUnique({ where: { id } });
+    if (!parlay || parlay.userId !== user.id) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     const { legs } = (await req.json()) as { legs: LegUpdate[] };
 
     if (!legs || legs.length === 0) {

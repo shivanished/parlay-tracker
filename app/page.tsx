@@ -1,11 +1,17 @@
 import { prisma } from "@/lib/db";
 import { ParlayCard } from "@/components/ParlayCard";
 import { ParlayWithLegs } from "@/lib/types";
+import { getUser } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  const user = await getUser();
+  if (!user) redirect("/login");
+
   const parlays = await prisma.parlay.findMany({
+    where: { userId: user.id },
     include: { legs: true },
     orderBy: { createdAt: "desc" },
   });

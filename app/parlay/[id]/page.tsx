@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/db";
 import { ParlayDetail } from "@/components/ParlayDetail";
 import { ParlayWithLegs } from "@/lib/types";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { getUser } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +13,16 @@ export default async function ParlayPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const user = await getUser();
+  if (!user) redirect("/login");
+
   const { id } = await params;
   const parlay = await prisma.parlay.findUnique({
     where: { id },
     include: { legs: true },
   });
 
-  if (!parlay) notFound();
+  if (!parlay || parlay.userId !== user.id) notFound();
 
   const data: ParlayWithLegs = {
     ...parlay,

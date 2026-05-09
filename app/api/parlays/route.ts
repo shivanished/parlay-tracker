@@ -4,10 +4,15 @@ import { calculateParlayOdds, calculatePayout } from "@/lib/probability";
 import { resolveTeamAbbr } from "@/lib/team-matcher";
 import { fetchNBAScoreboard, findGameForTeam } from "@/lib/espn";
 import { logger } from "@/lib/logger";
+import { getUser } from "@/lib/supabase/server";
 
 export async function GET() {
+  const user = await getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
     const parlays = await prisma.parlay.findMany({
+      where: { userId: user.id },
       include: { legs: true },
       orderBy: { createdAt: "desc" },
     });
@@ -28,7 +33,9 @@ interface LegInput {
 }
 
 export async function POST(req: NextRequest) {
-  logger.request("POST", "/api/parlays");
+  const user = await getUser();
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   try {
     const body = await req.json();
     const { legs, wagerAmount, gameDate } = body as {
@@ -69,6 +76,7 @@ export async function POST(req: NextRequest) {
 
     const parlay = await prisma.parlay.create({
       data: {
+        userId: user.id,
         createdAt: gameDate ? new Date(gameDate + "T12:00:00Z") : undefined,
         wagerAmount: wagerAmount || null,
         totalOdds,

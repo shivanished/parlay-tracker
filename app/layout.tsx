@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { getUser } from "@/lib/supabase/server";
+import { AuthButton } from "@/components/AuthButton";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,11 +20,13 @@ export const metadata: Metadata = {
   description: "Track your parlays in real-time with live scores",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const user = await getUser();
+
   return (
     <html
       lang="en"
@@ -39,12 +43,17 @@ export default function RootLayout({
                 TRACKER
               </span>
             </Link>
-            <Link
-              href="/new"
-              className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              + New Parlay
-            </Link>
+            <div className="flex items-center gap-3">
+              {user && (
+                <Link
+                  href="/new"
+                  className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  + New Parlay
+                </Link>
+              )}
+              <AuthButton email={user?.email} />
+            </div>
           </div>
         </header>
         <main className="flex-1">{children}</main>

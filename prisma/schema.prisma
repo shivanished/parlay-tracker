@@ -4,11 +4,12 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Parlay {
   id              String   @id @default(cuid())
+  userId          String
   createdAt       DateTime @default(now())
   status          String   @default("active")
   wagerAmount     Float?
@@ -16,6 +17,8 @@ model Parlay {
   potentialPayout Float?
   screenshotUrl   String?
   legs            Leg[]
+
+  @@index([userId])
 }
 
 model Leg {
@@ -30,11 +33,9 @@ model Leg {
   odds        Int
   status      String  @default("pending")
   espnEventId String?
-  // Final stat data (persisted when game ends)
   finalStatValue  Float?
   targetStatValue Float?
   statLabel       String?
-  // Game score (persisted when game ends)
   gameHomeTeam  String?
   gameAwayTeam  String?
   gameHomeScore Int?
