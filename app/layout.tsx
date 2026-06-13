@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { getUser } from "@/lib/supabase/server";
 import { AuthButton } from "@/components/AuthButton";
 import "./globals.css";
@@ -43,13 +44,14 @@ export default async function RootLayout({
                 TRACKER
               </span>
             </Link>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {user && (
                 <Link
                   href="/new"
-                  className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  aria-label="New parlay"
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-surface text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  + New Parlay
+                  <Plus className="h-3.5 w-3.5" />
                 </Link>
               )}
               <AuthButton email={user?.email} />
